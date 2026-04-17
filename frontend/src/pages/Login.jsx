@@ -7,7 +7,18 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { UtensilsCrossed } from "lucide-react";
 
-const HOME_BY_ROLE = { owner: "/dashboard", staff: "/pos", customer: "/browse" };
+const HOME_BY_ROLE = {
+  owner: "/dashboard", captain: "/captain", chef: "/kds",
+  cashier: "/cashier", customer: "/browse",
+};
+
+const QUICK = [
+  { role: "Owner", email: "owner@spice.com", password: "owner123", testid: "quick-owner-btn" },
+  { role: "Captain", email: "captain@spice.com", password: "captain123", testid: "quick-captain-btn" },
+  { role: "Chef", email: "chef@spice.com", password: "chef123", testid: "quick-chef-btn" },
+  { role: "Cashier", email: "cashier@spice.com", password: "cashier123", testid: "quick-cashier-btn" },
+  { role: "Customer", email: "guest@spice.com", password: "guest123", testid: "quick-customer-btn" },
+];
 
 export default function Login() {
   const { login } = useAuth();
@@ -23,8 +34,7 @@ export default function Login() {
     setLoading(false);
     if (res.ok) {
       toast.success(`Welcome back, ${res.user.name}`);
-      const fallback = HOME_BY_ROLE[res.user.role] || "/";
-      navigate(location.state?.from?.pathname || fallback, { replace: true });
+      navigate(location.state?.from?.pathname || HOME_BY_ROLE[res.user.role] || "/", { replace: true });
     } else {
       toast.error(res.error);
     }
@@ -38,9 +48,7 @@ export default function Login() {
     if (res.ok) {
       toast.success(`Signed in as ${res.user.role}`);
       navigate(HOME_BY_ROLE[res.user.role] || "/", { replace: true });
-    } else {
-      toast.error(res.error);
-    }
+    } else toast.error(res.error);
   };
 
   return (
@@ -48,22 +56,20 @@ export default function Login() {
       <div className="hidden md:flex relative items-end p-10 bg-brand-900 text-white overflow-hidden">
         <div
           className="absolute inset-0 opacity-40 bg-cover bg-center"
-          style={{
-            backgroundImage: `url(https://images.unsplash.com/photo-1727342427606-ce89e636330e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHwxfHx0ZXJyYWNvdHRhJTIwYWJzdHJhY3QlMjB0ZXh0dXJlfGVufDB8fHx8MTc3NjQzMjIwM3ww&ixlib=rb-4.1.0&q=85)`,
-          }}
+          style={{ backgroundImage: `url(https://images.unsplash.com/photo-1727342427606-ce89e636330e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHwxfHx0ZXJyYWNvdHRhJTIwYWJzdHJhY3QlMjB0ZXh0dXJlfGVufDB8fHx8MTc3NjQzMjIwM3ww&ixlib=rb-4.1.0&q=85)` }}
         />
         <div className="relative max-w-sm">
           <UtensilsCrossed className="w-10 h-10 text-[#E8B25C] mb-6" />
           <h2 className="font-heading text-4xl leading-tight">Your kitchen, finally in rhythm.</h2>
           <p className="mt-4 text-white/80 text-sm leading-relaxed">
-            Sign in to take orders, push tickets to the kitchen, print bills with CGST & SGST and close the day with a tap.
+            Captains take orders at tables · Chefs mark items ready · Cashiers collect payments — all in one app.
           </p>
         </div>
       </div>
 
       <div className="flex items-center justify-center p-8 bg-[#F9F6F0]">
         <div className="w-full max-w-md">
-          <Link to="/" className="inline-flex items-center gap-2 mb-10" data-testid="login-logo">
+          <Link to="/" className="inline-flex items-center gap-2 mb-8" data-testid="login-logo">
             <div className="w-9 h-9 rounded-xl bg-brand-500 flex items-center justify-center">
               <UtensilsCrossed className="w-5 h-5 text-white" />
             </div>
@@ -72,33 +78,14 @@ export default function Login() {
           <h1 className="font-heading text-3xl">Welcome back</h1>
           <p className="text-sm text-brand-900/60 mt-1">Sign in to continue to your POS.</p>
 
-          <form onSubmit={submit} className="mt-8 space-y-4" data-testid="login-form">
+          <form onSubmit={submit} className="mt-7 space-y-4" data-testid="login-form">
             <div>
               <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                data-testid="login-email-input"
-                className="mt-1 h-11"
-                placeholder="owner@spice.com"
-              />
+              <Input id="email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1 h-11" data-testid="login-email-input" placeholder="captain@spice.com" />
             </div>
             <div>
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                data-testid="login-password-input"
-                className="mt-1 h-11"
-              />
+              <Input id="password" type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="mt-1 h-11" data-testid="login-password-input" />
             </div>
             <Button type="submit" disabled={loading} className="w-full h-11 bg-brand-500 hover:bg-brand-600 text-white" data-testid="login-submit-btn">
               {loading ? "Signing in…" : "Sign in"}
@@ -108,15 +95,16 @@ export default function Login() {
           <div className="mt-6">
             <div className="text-[11px] uppercase tracking-[0.22em] text-brand-500 mb-2">Demo accounts</div>
             <div className="grid grid-cols-3 gap-2">
-              <Button variant="outline" size="sm" onClick={() => quick("owner@spice.com", "owner123")} data-testid="quick-owner-btn">Owner</Button>
-              <Button variant="outline" size="sm" onClick={() => quick("staff@spice.com", "staff123")} data-testid="quick-staff-btn">Staff</Button>
-              <Button variant="outline" size="sm" onClick={() => quick("guest@spice.com", "guest123")} data-testid="quick-customer-btn">Customer</Button>
+              {QUICK.map((q) => (
+                <Button key={q.role} variant="outline" size="sm" onClick={() => quick(q.email, q.password)} data-testid={q.testid}>
+                  {q.role}
+                </Button>
+              ))}
             </div>
           </div>
 
-          <p className="mt-8 text-sm text-brand-900/70">
-            New here?{" "}
-            <Link to="/register" className="text-brand-500 hover:underline" data-testid="login-to-register">Create an account</Link>
+          <p className="mt-7 text-sm text-brand-900/70">
+            New here? <Link to="/register" className="text-brand-500 hover:underline" data-testid="login-to-register">Create an account</Link>
           </p>
         </div>
       </div>

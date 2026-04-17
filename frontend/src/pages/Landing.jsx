@@ -43,8 +43,8 @@ export default function Landing() {
               <Link to="/register">Create account</Link>
             </Button>
           </div>
-          <div className="mt-6 text-xs text-brand-900/60">
-            Demo owner: <span className="font-mono">owner@spice.com / owner123</span> · staff@spice.com / staff123 · guest@spice.com / guest123
+          <div className="mt-6 text-xs text-brand-900/60 font-mono">
+            Demo · owner@spice.com / owner123 · captain@spice.com / captain123 · chef@spice.com / chef123 · cashier@spice.com / cashier123 · guest@spice.com / guest123
           </div>
         </div>
       </section>

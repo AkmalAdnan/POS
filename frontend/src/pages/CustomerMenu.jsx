@@ -4,35 +4,36 @@ import AppShell from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Minus, Trash2 } from "lucide-react";
+import { Plus, Minus, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 
 export default function CustomerMenu() {
   const { user } = useAuth();
   const [menu, setMenu] = useState([]);
+  const [tables, setTables] = useState([]);
   const [settings, setSettings] = useState({ cgst_rate: 2.5, sgst_rate: 2.5 });
   const [cart, setCart] = useState([]);
-  const [table, setTable] = useState("");
+  const [query, setQuery] = useState("");
+  const [tableId, setTableId] = useState("");
 
   useEffect(() => {
     (async () => {
-      const [m, s] = await Promise.all([api.get("/menu"), api.get("/settings")]);
-      setMenu(m.data);
-      setSettings(s.data);
+      const [m, s, t] = await Promise.all([api.get("/menu"), api.get("/settings"), api.get("/tables")]);
+      setMenu(m.data); setSettings(s.data); setTables(t.data);
     })();
   }, []);
 
   const categories = useMemo(() => Array.from(new Set(menu.map((i) => i.category))), [menu]);
+  const visible = menu.filter((i) => i.is_available && i.name.toLowerCase().includes(query.toLowerCase()));
 
   const add = (i) => setCart((c) => {
     const ex = c.find((x) => x.menu_item_id === i.id);
     return ex
       ? c.map((x) => x.menu_item_id === i.id ? { ...x, quantity: x.quantity + 1 } : x)
-      : [...c, { menu_item_id: i.id, name: i.name, price: i.price, quantity: 1 }];
+      : [...c, { menu_item_id: i.id, name: i.name, price: i.price, quantity: 1, notes: "" }];
   });
-  const dec = (id) =>
-    setCart((c) => c.flatMap((x) => x.menu_item_id === id ? (x.quantity > 1 ? [{ ...x, quantity: x.quantity - 1 }] : []) : [x]));
+  const dec = (id) => setCart((c) => c.flatMap((x) => x.menu_item_id === id ? (x.quantity > 1 ? [{ ...x, quantity: x.quantity - 1 }] : []) : [x]));
 
   const subtotal = cart.reduce((s, x) => s + x.price * x.quantity, 0);
   const cgst = +(subtotal * settings.cgst_rate / 100).toFixed(2);
@@ -41,13 +42,14 @@ export default function CustomerMenu() {
 
   const placeOrder = async () => {
     if (cart.length === 0) return;
+    if (!tableId) return toast.error("Pick a table");
     try {
-      const { data } = await api.post("/orders", { items: cart, table_number: table || null, customer_name: user?.name });
-      toast.success(`Order #${data.order_number} placed — sent to kitchen!`);
+      const { data: bill } = await api.post("/bills", { table_id: tableId, customer_name: user?.name });
+      await api.post(`/bills/${bill.id}/items`, { items: cart });
+      await api.post(`/bills/${bill.id}/send-kot`);
+      toast.success(`Bill #${bill.bill_number} placed — sent to kitchen!`);
       setCart([]);
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Failed to place order");
-    }
+    } catch (e) { toast.error(e.response?.data?.detail || "Failed to place order"); }
   };
 
   return (
@@ -56,18 +58,24 @@ export default function CustomerMenu() {
         <div>
           <h1 className="font-heading text-3xl md:text-4xl">Today's Menu</h1>
           <p className="text-sm text-brand-900/60 mt-1">Browse our kitchen, add to cart and place your order.</p>
+
+          <div className="relative mt-5 mb-2">
+            <Search className="w-4 h-4 text-brand-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search menu…" className="pl-9 h-11" data-testid="customer-search-input" />
+          </div>
+
           {categories.length > 0 && (
-            <Tabs defaultValue={categories[0]} className="mt-6">
+            <Tabs defaultValue={categories[0]} className="mt-2">
               <TabsList className="h-auto flex flex-wrap gap-1 bg-white border border-earth-border p-1 rounded-xl">
                 {categories.map((c) => (
-                  <TabsTrigger key={c} value={c} className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid={`customer-tab-${c.toLowerCase().replace(/\s+/g, "-")}`}>
+                  <TabsTrigger key={c} value={c} className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg">
                     {c}
                   </TabsTrigger>
                 ))}
               </TabsList>
               {categories.map((c) => (
                 <TabsContent key={c} value={c} className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {menu.filter((x) => x.category === c && x.is_available).map((it) => (
+                  {visible.filter((x) => x.category === c).map((it) => (
                     <div key={it.id} className="bg-white border border-earth-border rounded-xl p-4 flex items-start justify-between gap-3" data-testid={`customer-item-${it.id}`}>
                       <div>
                         <div className="font-heading text-lg leading-tight">{it.name}</div>
@@ -87,7 +95,12 @@ export default function CustomerMenu() {
 
         <aside className="bg-white border border-earth-border rounded-2xl p-5 h-fit lg:sticky lg:top-24">
           <h3 className="font-heading text-xl">Your cart</h3>
-          <Input placeholder="Table # (optional)" value={table} onChange={(e) => setTable(e.target.value)} className="mt-3" data-testid="customer-table-input" />
+          <label className="text-xs text-brand-900/60 mt-3 block">Table</label>
+          <select value={tableId} onChange={(e) => setTableId(e.target.value)} className="mt-1 w-full h-11 rounded-md border border-earth-border bg-white px-3 text-sm" data-testid="customer-table-select">
+            <option value="">Choose a table…</option>
+            {tables.map((t) => <option key={t.id} value={t.id} disabled={t.status === "occupied"}>{t.name} — {t.status}</option>)}
+          </select>
+
           <ul className="mt-4 divide-y divide-earth-border">
             {cart.length === 0 && <li className="py-10 text-center text-sm text-brand-900/50">No items yet.</li>}
             {cart.map((x) => (

@@ -8,32 +8,38 @@ const linkCls = ({ isActive }) =>
     isActive ? "bg-brand-500 text-white" : "text-brand-900 hover:bg-brand-50"
   }`;
 
+const LINKS = {
+  owner: [
+    { to: "/dashboard", label: "Dashboard" },
+    { to: "/owner/tables", label: "Tables" },
+    { to: "/menu", label: "Menu" },
+    { to: "/inventory", label: "Inventory" },
+    { to: "/expenses", label: "Expenses" },
+    { to: "/orders", label: "Bills" },
+    { to: "/settings", label: "Settings" },
+  ],
+  captain: [
+    { to: "/captain", label: "Tables" },
+    { to: "/orders", label: "Bills" },
+    { to: "/inventory", label: "Inventory" },
+  ],
+  chef: [
+    { to: "/kds", label: "Kitchen" },
+  ],
+  cashier: [
+    { to: "/cashier", label: "Payments" },
+    { to: "/orders", label: "Bills" },
+  ],
+  customer: [
+    { to: "/browse", label: "Menu" },
+    { to: "/my-orders", label: "My Orders" },
+  ],
+};
+
 export default function AppShell({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-
-  const linksByRole = {
-    owner: [
-      { to: "/dashboard", label: "Dashboard" },
-      { to: "/pos", label: "POS" },
-      { to: "/kds", label: "Kitchen" },
-      { to: "/orders", label: "Orders" },
-      { to: "/menu", label: "Menu" },
-      { to: "/expenses", label: "Expenses" },
-      { to: "/settings", label: "Settings" },
-    ],
-    staff: [
-      { to: "/pos", label: "POS" },
-      { to: "/kds", label: "Kitchen" },
-      { to: "/orders", label: "Orders" },
-    ],
-    customer: [
-      { to: "/browse", label: "Menu" },
-      { to: "/my-orders", label: "My Orders" },
-    ],
-  };
-
-  const links = user ? linksByRole[user.role] || [] : [];
+  const links = user ? LINKS[user.role] || [] : [];
 
   return (
     <div className="min-h-screen bg-[#F9F6F0]">

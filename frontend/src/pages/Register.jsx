@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { UtensilsCrossed } from "lucide-react";
 
-const HOME_BY_ROLE = { owner: "/dashboard", staff: "/pos", customer: "/browse" };
+const HOME_BY_ROLE = { owner: "/dashboard", captain: "/captain", chef: "/kds", cashier: "/cashier", customer: "/browse" };
 
 export default function Register() {
   const { register } = useAuth();
@@ -21,12 +21,8 @@ export default function Register() {
     setLoading(true);
     const res = await register({ ...form, email: form.email.trim().toLowerCase() });
     setLoading(false);
-    if (res.ok) {
-      toast.success(`Welcome, ${res.user.name}!`);
-      navigate(HOME_BY_ROLE[res.user.role] || "/", { replace: true });
-    } else {
-      toast.error(res.error);
-    }
+    if (res.ok) { toast.success(`Welcome, ${res.user.name}!`); navigate(HOME_BY_ROLE[res.user.role] || "/", { replace: true }); }
+    else toast.error(res.error);
   };
 
   return (
@@ -42,26 +38,19 @@ export default function Register() {
         <p className="text-sm text-brand-900/60 mt-1">Pick your role and start in seconds.</p>
 
         <form onSubmit={submit} className="mt-8 space-y-4" data-testid="register-form">
-          <div>
-            <Label htmlFor="name">Full name</Label>
-            <Input id="name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 h-11" data-testid="register-name-input" />
-          </div>
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1 h-11" data-testid="register-email-input" />
-          </div>
-          <div>
-            <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" required minLength={6} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="mt-1 h-11" data-testid="register-password-input" />
-          </div>
+          <div><Label>Full name</Label><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 h-11" data-testid="register-name-input" /></div>
+          <div><Label>Email</Label><Input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1 h-11" data-testid="register-email-input" /></div>
+          <div><Label>Password</Label><Input type="password" required minLength={6} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="mt-1 h-11" data-testid="register-password-input" /></div>
           <div>
             <Label>Role</Label>
             <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
               <SelectTrigger className="mt-1 h-11" data-testid="register-role-select"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="customer">Customer — browse and order</SelectItem>
-                <SelectItem value="staff">Staff — take orders at POS</SelectItem>
-                <SelectItem value="owner">Owner — full access & reports</SelectItem>
+                <SelectItem value="customer">Customer — browse menu</SelectItem>
+                <SelectItem value="captain">Captain / Steward — take orders at tables</SelectItem>
+                <SelectItem value="chef">Chef — see kitchen display</SelectItem>
+                <SelectItem value="cashier">Cashier — collect payments</SelectItem>
+                <SelectItem value="owner">Owner — full access</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -71,8 +60,7 @@ export default function Register() {
         </form>
 
         <p className="mt-6 text-sm text-brand-900/70">
-          Already have an account?{" "}
-          <Link to="/login" className="text-brand-500 hover:underline" data-testid="register-to-login">Sign in</Link>
+          Already have an account? <Link to="/login" className="text-brand-500 hover:underline" data-testid="register-to-login">Sign in</Link>
         </p>
       </div>
     </div>

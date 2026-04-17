@@ -7,9 +7,11 @@ load_dotenv(ROOT_DIR / ".env")
 import os
 import io
 import csv
+import math
 import uuid
 import bcrypt
 import jwt
+import ipaddress
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
@@ -18,9 +20,9 @@ from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Respons
 from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, EmailStr
 
-# --- Setup
+# ---------- Setup
 mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
@@ -28,60 +30,74 @@ db = client[os.environ["DB_NAME"]]
 JWT_ALGORITHM = "HS256"
 JWT_SECRET = os.environ["JWT_SECRET"]
 
-app = FastAPI(title="Spice POS API")
+app = FastAPI(title="Spice POS API v2")
 api = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+Role = Literal["owner", "captain", "chef", "cashier", "customer"]
 
-# --- Helpers
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+CATEGORY_TO_DEPARTMENT = {
+    "Main Course": "Main Kitchen",
+    "Biryanis": "Main Kitchen",
+    "Mandi": "Main Kitchen",
+    "Mutton": "Main Kitchen",
+    "Chinese": "Chinese Counter",
+    "Fried Rice": "Chinese Counter",
+    "Roti": "Chinese Counter",
+    "Sweets": "Sweets / Dessert",
+    "Beverages": "Beverage Counter",
+}
+ALL_DEPARTMENTS = ["Main Kitchen", "Chinese Counter", "Sweets / Dessert", "Beverage Counter"]
 
 
-def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+def dept_for(category: str) -> str:
+    return CATEGORY_TO_DEPARTMENT.get(category, "Main Kitchen")
 
 
-def create_access_token(user_id: str, email: str, role: str) -> str:
-    payload = {
-        "sub": user_id,
-        "email": email,
-        "role": role,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=12),
-        "type": "access",
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+# ---------- Helpers
+def hash_password(p: str) -> str:
+    return bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode()
 
+def verify_password(p: str, h: str) -> bool:
+    return bcrypt.checkpw(p.encode(), h.encode())
 
 def iso(dt: Optional[datetime] = None) -> str:
     return (dt or datetime.now(timezone.utc)).isoformat()
 
+def create_token(user: dict) -> str:
+    payload = {"sub": user["id"], "email": user["email"], "role": user["role"],
+               "exp": datetime.now(timezone.utc) + timedelta(hours=12), "type": "access"}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-# --- Models
-Role = Literal["owner", "staff", "customer"]
+def public_user(u: dict) -> dict:
+    return {"id": u["id"], "name": u["name"], "email": u["email"], "role": u["role"], "created_at": u["created_at"]}
+
+def client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else ""
+
+def haversine_m(lat1, lon1, lat2, lon2) -> float:
+    R = 6371000
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
+    a = math.sin(dp/2)**2 + math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
+    return 2*R*math.asin(math.sqrt(a))
 
 
+# ---------- Models
 class RegisterIn(BaseModel):
     name: str
     email: EmailStr
     password: str
     role: Role = "customer"
 
-
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
-
-
-class UserOut(BaseModel):
-    id: str
-    name: str
-    email: EmailStr
-    role: Role
-    created_at: str
-
 
 class MenuItemIn(BaseModel):
     name: str
@@ -91,371 +107,602 @@ class MenuItemIn(BaseModel):
     description: Optional[str] = ""
     is_available: bool = True
 
-
-class MenuItemOut(MenuItemIn):
-    id: str
-    created_at: str
-
-
-class OrderItemIn(BaseModel):
-    menu_item_id: str
-    name: str
-    price: float
-    quantity: int
-
-
-class OrderCreate(BaseModel):
-    items: List[OrderItemIn]
-    table_number: Optional[str] = None
-    customer_name: Optional[str] = None
+class BillCreate(BaseModel):
+    table_id: str
+    customer_name: Optional[str] = ""
     notes: Optional[str] = ""
 
+class AddItemsIn(BaseModel):
+    items: List[dict]  # [{menu_item_id, quantity, notes}]
 
-class OrderStatusUpdate(BaseModel):
-    status: Literal["new", "preparing", "ready", "served", "cancelled"]
+class EditItemIn(BaseModel):
+    menu_item_id: Optional[str] = None
+    quantity: Optional[int] = None
+    notes: Optional[str] = None
 
+class ChefStatusIn(BaseModel):
+    chef_status: Literal["pending", "ready", "cancelled"]
 
-class ExpenseIn(BaseModel):
-    title: str
+class PaymentIn(BaseModel):
+    method: Literal["cash", "upi", "card"]
     amount: float
-    category: Optional[str] = "general"
-    date: Optional[str] = None  # ISO date YYYY-MM-DD
 
+class TableIn(BaseModel):
+    name: str
+    seats: int = 4
+
+class InventoryIn(BaseModel):
+    name: str
+    unit: str = "kg"
+    quantity: float = 0
+    low_threshold: float = 0
+    category: Optional[str] = "general"
+    note: Optional[str] = ""
 
 class SettingsIn(BaseModel):
-    cgst_rate: float  # percentage, e.g., 2.5
+    cgst_rate: float
     sgst_rate: float
     restaurant_name: Optional[str] = "Spice Route"
     address: Optional[str] = ""
     phone: Optional[str] = ""
     gstin: Optional[str] = ""
+    restaurant_lat: Optional[float] = 0
+    restaurant_lng: Optional[float] = 0
+    geofence_radius_m: Optional[int] = 200
+    geofence_enabled: Optional[bool] = False
+    ip_check_enabled: Optional[bool] = False
+    allowed_ips: Optional[List[str]] = []
+
+class GuardCheckIn(BaseModel):
+    lat: Optional[float] = None
+    lng: Optional[float] = None
 
 
-# --- Auth dependency
+# ---------- Auth
 def extract_token(request: Request) -> Optional[str]:
-    token = request.cookies.get("access_token")
-    if not token:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            token = auth[7:]
-    return token
-
+    tok = request.cookies.get("access_token")
+    if not tok:
+        h = request.headers.get("Authorization", "")
+        if h.startswith("Bearer "):
+            tok = h[7:]
+    return tok
 
 async def get_current_user(request: Request) -> dict:
-    token = extract_token(request)
-    if not token:
+    tok = extract_token(request)
+    if not tok:
         raise HTTPException(401, "Not authenticated")
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(tok, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(401, "Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(401, "Invalid token")
-    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
-    if not user:
+    u = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    if not u:
         raise HTTPException(401, "User not found")
-    return user
-
+    # Back-compat: legacy "staff" → captain
+    if u["role"] == "staff":
+        u["role"] = "captain"
+        await db.users.update_one({"id": u["id"]}, {"$set": {"role": "captain"}})
+    return u
 
 def require_roles(*roles: str):
-    async def checker(user: dict = Depends(get_current_user)):
+    async def dep(user: dict = Depends(get_current_user)):
         if user["role"] not in roles:
             raise HTTPException(403, "Insufficient permissions")
         return user
-    return checker
+    return dep
 
 
-# --- Auth endpoints
-def set_auth_cookie(response: Response, token: str):
-    response.set_cookie(
-        key="access_token",
-        value=token,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=60 * 60 * 12,
-        path="/",
-    )
-
-
-def user_public(user: dict) -> dict:
-    return {
-        "id": user["id"],
-        "name": user["name"],
-        "email": user["email"],
-        "role": user["role"],
-        "created_at": user["created_at"],
-    }
+def set_auth_cookie(resp: Response, token: str):
+    resp.set_cookie(key="access_token", value=token, httponly=True, secure=False,
+                    samesite="lax", max_age=60*60*12, path="/")
 
 
 @api.post("/auth/register")
-async def register(body: RegisterIn, response: Response):
+async def register(body: RegisterIn, resp: Response):
     email = body.email.lower()
-    existing = await db.users.find_one({"email": email})
-    if existing:
+    if await db.users.find_one({"email": email}):
         raise HTTPException(400, "Email already registered")
-    user_id = str(uuid.uuid4())
-    doc = {
-        "id": user_id,
-        "name": body.name,
-        "email": email,
-        "role": body.role,
-        "password_hash": hash_password(body.password),
-        "created_at": iso(),
-    }
+    uid = str(uuid.uuid4())
+    doc = {"id": uid, "name": body.name, "email": email, "role": body.role,
+           "password_hash": hash_password(body.password), "created_at": iso()}
     await db.users.insert_one(doc)
-    token = create_access_token(user_id, email, body.role)
-    set_auth_cookie(response, token)
-    return {"user": user_public(doc), "token": token}
-
+    tok = create_token(doc)
+    set_auth_cookie(resp, tok)
+    return {"user": public_user(doc), "token": tok}
 
 @api.post("/auth/login")
-async def login(body: LoginIn, response: Response):
+async def login(body: LoginIn, resp: Response):
     email = body.email.lower()
-    user = await db.users.find_one({"email": email})
-    if not user or not verify_password(body.password, user["password_hash"]):
+    u = await db.users.find_one({"email": email})
+    if not u or not verify_password(body.password, u["password_hash"]):
         raise HTTPException(401, "Invalid credentials")
-    token = create_access_token(user["id"], user["email"], user["role"])
-    set_auth_cookie(response, token)
-    return {"user": user_public(user), "token": token}
-
+    if u["role"] == "staff":
+        u["role"] = "captain"
+        await db.users.update_one({"id": u["id"]}, {"$set": {"role": "captain"}})
+    tok = create_token(u)
+    set_auth_cookie(resp, tok)
+    return {"user": public_user(u), "token": tok}
 
 @api.post("/auth/logout")
-async def logout(response: Response):
-    response.delete_cookie("access_token", path="/")
+async def logout(resp: Response):
+    resp.delete_cookie("access_token", path="/")
     return {"ok": True}
-
 
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
-    return user_public(user)
+    return public_user(user)
 
 
-# --- Menu
+# ---------- Settings
+async def settings_doc() -> dict:
+    s = await db.settings.find_one({"id": "global"}, {"_id": 0})
+    if not s:
+        s = {"id": "global", "cgst_rate": 2.5, "sgst_rate": 2.5,
+             "restaurant_name": "Spice Route", "address": "42 MG Road, Bengaluru",
+             "phone": "+91 98765 43210", "gstin": "29ABCDE1234F1Z5",
+             "restaurant_lat": 12.9716, "restaurant_lng": 77.5946,
+             "geofence_radius_m": 200, "geofence_enabled": False,
+             "ip_check_enabled": False, "allowed_ips": []}
+        await db.settings.insert_one(s.copy())
+    # Ensure new keys exist on old settings docs
+    defaults = {"restaurant_lat": 12.9716, "restaurant_lng": 77.5946,
+                "geofence_radius_m": 200, "geofence_enabled": False,
+                "ip_check_enabled": False, "allowed_ips": []}
+    updates = {k: v for k, v in defaults.items() if k not in s}
+    if updates:
+        await db.settings.update_one({"id": "global"}, {"$set": updates})
+        s.update(updates)
+    return s
+
+@api.get("/settings")
+async def get_settings():
+    s = await settings_doc()
+    # Expose departments for UI use
+    s["departments"] = ALL_DEPARTMENTS
+    s["category_to_department"] = CATEGORY_TO_DEPARTMENT
+    return s
+
+@api.put("/settings")
+async def update_settings(body: SettingsIn, user: dict = Depends(require_roles("owner"))):
+    await db.settings.update_one({"id": "global"}, {"$set": body.model_dump()}, upsert=True)
+    return await get_settings()
+
+
+# ---------- Menu
 @api.get("/menu")
 async def list_menu():
-    items = await db.menu_items.find({}, {"_id": 0}).to_list(2000)
+    items = await db.menu_items.find({}, {"_id": 0}).to_list(3000)
+    for it in items:
+        it["department"] = dept_for(it.get("category", ""))
     return items
 
-
-@api.post("/menu", response_model=MenuItemOut)
-async def create_menu_item(body: MenuItemIn, user: dict = Depends(require_roles("owner"))):
+@api.post("/menu")
+async def create_menu(body: MenuItemIn, user: dict = Depends(require_roles("owner"))):
     doc = body.model_dump()
     doc["id"] = str(uuid.uuid4())
     doc["created_at"] = iso()
     await db.menu_items.insert_one(doc.copy())
     doc.pop("_id", None)
+    doc["department"] = dept_for(doc["category"])
     return doc
 
-
 @api.put("/menu/{item_id}")
-async def update_menu_item(item_id: str, body: MenuItemIn, user: dict = Depends(require_roles("owner"))):
-    res = await db.menu_items.update_one({"id": item_id}, {"$set": body.model_dump()})
-    if res.matched_count == 0:
+async def update_menu(item_id: str, body: MenuItemIn, user: dict = Depends(require_roles("owner"))):
+    r = await db.menu_items.update_one({"id": item_id}, {"$set": body.model_dump()})
+    if r.matched_count == 0:
         raise HTTPException(404, "Not found")
-    item = await db.menu_items.find_one({"id": item_id}, {"_id": 0})
-    return item
-
+    m = await db.menu_items.find_one({"id": item_id}, {"_id": 0})
+    m["department"] = dept_for(m["category"])
+    return m
 
 @api.delete("/menu/{item_id}")
-async def delete_menu_item(item_id: str, user: dict = Depends(require_roles("owner"))):
-    res = await db.menu_items.delete_one({"id": item_id})
-    if res.deleted_count == 0:
+async def delete_menu(item_id: str, user: dict = Depends(require_roles("owner"))):
+    r = await db.menu_items.delete_one({"id": item_id})
+    if r.deleted_count == 0:
         raise HTTPException(404, "Not found")
     return {"ok": True}
 
 
-# --- Settings (CGST/SGST/restaurant info)
-async def get_settings_doc() -> dict:
-    s = await db.settings.find_one({"id": "global"}, {"_id": 0})
-    if not s:
-        s = {
-            "id": "global",
-            "cgst_rate": 2.5,
-            "sgst_rate": 2.5,
-            "restaurant_name": "Spice Route",
-            "address": "42 MG Road, Bengaluru",
-            "phone": "+91 98765 43210",
-            "gstin": "29ABCDE1234F1Z5",
-        }
-        await db.settings.insert_one(s.copy())
-    return s
+# ---------- Tables
+@api.get("/tables")
+async def list_tables(user: dict = Depends(get_current_user)):
+    tables = await db.tables.find({}, {"_id": 0}).sort("name", 1).to_list(500)
+    # Attach current open bill (if any)
+    open_bills = await db.bills.find({"status": "open"}, {"_id": 0, "id": 1, "table_id": 1, "bill_number": 1, "total": 1, "captain_name": 1, "created_at": 1, "payment": 1}).to_list(500)
+    by_table = {b["table_id"]: b for b in open_bills}
+    for t in tables:
+        b = by_table.get(t["id"])
+        t["status"] = "occupied" if b else "available"
+        t["open_bill"] = b
+    return tables
+
+@api.post("/tables")
+async def create_table(body: TableIn, user: dict = Depends(require_roles("owner"))):
+    d = {"id": str(uuid.uuid4()), "name": body.name, "seats": body.seats, "created_at": iso()}
+    await db.tables.insert_one(d.copy())
+    d.pop("_id", None)
+    return d
+
+@api.put("/tables/{tid}")
+async def update_table(tid: str, body: TableIn, user: dict = Depends(require_roles("owner"))):
+    r = await db.tables.update_one({"id": tid}, {"$set": body.model_dump()})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Not found")
+    return await db.tables.find_one({"id": tid}, {"_id": 0})
+
+@api.delete("/tables/{tid}")
+async def delete_table(tid: str, user: dict = Depends(require_roles("owner"))):
+    # Don't delete if occupied
+    open_b = await db.bills.find_one({"table_id": tid, "status": "open"})
+    if open_b:
+        raise HTTPException(400, "Table has an open bill")
+    r = await db.tables.delete_one({"id": tid})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
 
 
-@api.get("/settings")
-async def get_settings():
-    return await get_settings_doc()
+# ---------- Inventory
+@api.get("/inventory")
+async def list_inventory(user: dict = Depends(require_roles("owner", "captain"))):
+    return await db.inventory.find({}, {"_id": 0}).sort("name", 1).to_list(2000)
+
+@api.post("/inventory")
+async def create_inventory(body: InventoryIn, user: dict = Depends(require_roles("owner"))):
+    d = {"id": str(uuid.uuid4()), **body.model_dump(), "created_at": iso(), "updated_at": iso()}
+    await db.inventory.insert_one(d.copy())
+    d.pop("_id", None)
+    return d
+
+@api.put("/inventory/{iid}")
+async def update_inventory(iid: str, body: InventoryIn, user: dict = Depends(require_roles("owner"))):
+    data = body.model_dump(); data["updated_at"] = iso()
+    r = await db.inventory.update_one({"id": iid}, {"$set": data})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Not found")
+    return await db.inventory.find_one({"id": iid}, {"_id": 0})
+
+@api.delete("/inventory/{iid}")
+async def delete_inventory(iid: str, user: dict = Depends(require_roles("owner"))):
+    r = await db.inventory.delete_one({"id": iid})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
 
 
-@api.put("/settings")
-async def update_settings(body: SettingsIn, user: dict = Depends(require_roles("owner"))):
-    data = body.model_dump()
-    await db.settings.update_one({"id": "global"}, {"$set": data}, upsert=True)
-    return await get_settings_doc()
+# ---------- Bills / Orders
+async def next_bill_number() -> int:
+    d = await db.counters.find_one_and_update({"id": "bills"}, {"$inc": {"value": 1}}, upsert=True, return_document=True)
+    if not d: d = await db.counters.find_one({"id": "bills"})
+    return int(d["value"])
 
-
-# --- Orders
-def compute_totals(items: List[dict], cgst_rate: float, sgst_rate: float) -> dict:
-    subtotal = round(sum(i["price"] * i["quantity"] for i in items), 2)
-    cgst = round(subtotal * cgst_rate / 100, 2)
-    sgst = round(subtotal * sgst_rate / 100, 2)
+def recompute_totals(bill: dict) -> dict:
+    active = [i for i in bill["items"] if i.get("chef_status") != "cancelled"]
+    subtotal = round(sum(i["price"] * i["quantity"] for i in active), 2)
+    cgst = round(subtotal * bill["cgst_rate"] / 100, 2)
+    sgst = round(subtotal * bill["sgst_rate"] / 100, 2)
     total = round(subtotal + cgst + sgst, 2)
-    return {"subtotal": subtotal, "cgst": cgst, "sgst": sgst, "total": total}
+    bill["subtotal"] = subtotal; bill["cgst"] = cgst; bill["sgst"] = sgst; bill["total"] = total
+    return bill
+
+async def fetch_bill(bill_id: str) -> dict:
+    b = await db.bills.find_one({"id": bill_id}, {"_id": 0})
+    if not b:
+        raise HTTPException(404, "Bill not found")
+    return b
+
+async def save_bill(bill: dict):
+    bill["updated_at"] = iso()
+    recompute_totals(bill)
+    await db.bills.update_one({"id": bill["id"]}, {"$set": bill})
 
 
-async def next_order_number() -> int:
-    doc = await db.counters.find_one_and_update(
-        {"id": "orders"},
-        {"$inc": {"value": 1}},
-        upsert=True,
-        return_document=True,
-    )
-    if not doc:
-        doc = await db.counters.find_one({"id": "orders"})
-    return int(doc["value"])
-
-
-@api.post("/orders")
-async def create_order(body: OrderCreate, user: dict = Depends(get_current_user)):
-    if not body.items:
-        raise HTTPException(400, "Order must contain at least 1 item")
-    settings = await get_settings_doc()
-    items = [i.model_dump() for i in body.items]
-    totals = compute_totals(items, settings["cgst_rate"], settings["sgst_rate"])
-    order_no = await next_order_number()
-    doc = {
+@api.post("/bills")
+async def create_bill(body: BillCreate, user: dict = Depends(require_roles("captain", "owner"))):
+    # Enforce: one open bill per table
+    existing = await db.bills.find_one({"table_id": body.table_id, "status": "open"})
+    if existing:
+        existing.pop("_id", None)
+        return existing
+    table = await db.tables.find_one({"id": body.table_id}, {"_id": 0})
+    if not table:
+        raise HTTPException(404, "Table not found")
+    s = await settings_doc()
+    bill = {
         "id": str(uuid.uuid4()),
-        "order_number": order_no,
-        "items": items,
-        "table_number": body.table_number or "-",
-        "customer_name": body.customer_name or user.get("name", ""),
+        "bill_number": await next_bill_number(),
+        "table_id": body.table_id,
+        "table_name": table["name"],
+        "customer_name": body.customer_name or "",
+        "captain_id": user["id"],
+        "captain_name": user["name"],
         "notes": body.notes or "",
-        "created_by": user["id"],
-        "created_by_name": user["name"],
-        "created_by_role": user["role"],
-        "status": "new",
-        "cgst_rate": settings["cgst_rate"],
-        "sgst_rate": settings["sgst_rate"],
-        **totals,
-        "created_at": iso(),
+        "status": "open",
+        "items": [],
+        "kot_batches": [],
+        "cgst_rate": s["cgst_rate"],
+        "sgst_rate": s["sgst_rate"],
+        "subtotal": 0, "cgst": 0, "sgst": 0, "total": 0,
+        "payment": {"status": "pending", "method": None, "amount_received": 0,
+                    "received_at": None, "received_by": None, "received_by_name": None},
+        "created_at": iso(), "updated_at": iso(),
     }
-    await db.orders.insert_one(doc.copy())
-    doc.pop("_id", None)
-    return doc
+    await db.bills.insert_one(bill.copy())
+    bill.pop("_id", None)
+    return bill
 
 
-@api.get("/orders")
-async def list_orders(
+@api.get("/bills")
+async def list_bills(
     status: Optional[str] = None,
-    date: Optional[str] = None,  # YYYY-MM-DD
+    date: Optional[str] = None,
+    payment_status: Optional[str] = None,
+    table_id: Optional[str] = None,
     user: dict = Depends(get_current_user),
 ):
     q = {}
-    if status:
-        q["status"] = status
-    if date:
-        q["created_at"] = {"$gte": f"{date}T00:00:00", "$lt": f"{date}T23:59:59.999999+00:00"}
-    # Customers only see their own orders
+    if status: q["status"] = status
+    if date: q["created_at"] = {"$gte": f"{date}T00:00:00", "$lt": f"{date}T23:59:59.999999+00:00"}
+    if table_id: q["table_id"] = table_id
+    if payment_status: q["payment.status"] = payment_status
     if user["role"] == "customer":
-        q["created_by"] = user["id"]
-    orders = await db.orders.find(q, {"_id": 0}).sort("created_at", -1).to_list(5000)
-    return orders
+        q["captain_id"] = user["id"]
+    return await db.bills.find(q, {"_id": 0}).sort("created_at", -1).to_list(5000)
 
 
-@api.get("/orders/{order_id}")
-async def get_order(order_id: str, user: dict = Depends(get_current_user)):
-    o = await db.orders.find_one({"id": order_id}, {"_id": 0})
-    if not o:
-        raise HTTPException(404, "Not found")
-    if user["role"] == "customer" and o["created_by"] != user["id"]:
-        raise HTTPException(403, "Forbidden")
-    return o
+@api.get("/bills/{bid}")
+async def get_bill(bid: str, user: dict = Depends(get_current_user)):
+    return await fetch_bill(bid)
 
 
-@api.put("/orders/{order_id}/status")
-async def update_order_status(order_id: str, body: OrderStatusUpdate, user: dict = Depends(require_roles("owner", "staff"))):
-    res = await db.orders.update_one({"id": order_id}, {"$set": {"status": body.status, "updated_at": iso()}})
-    if res.matched_count == 0:
-        raise HTTPException(404, "Not found")
-    o = await db.orders.find_one({"id": order_id}, {"_id": 0})
-    return o
+@api.post("/bills/{bid}/items")
+async def add_items(bid: str, body: AddItemsIn, user: dict = Depends(require_roles("captain", "owner"))):
+    bill = await fetch_bill(bid)
+    if bill["status"] != "open":
+        raise HTTPException(400, "Bill is not open")
+    if not body.items:
+        raise HTTPException(400, "No items")
+    for it in body.items:
+        menu = await db.menu_items.find_one({"id": it["menu_item_id"]}, {"_id": 0})
+        if not menu:
+            raise HTTPException(404, f"Menu item not found: {it['menu_item_id']}")
+        bill["items"].append({
+            "id": str(uuid.uuid4()),
+            "menu_item_id": menu["id"],
+            "name": menu["name"],
+            "price": float(menu["price"]),
+            "category": menu["category"],
+            "department": dept_for(menu["category"]),
+            "quantity": int(it.get("quantity", 1)),
+            "notes": it.get("notes", "") or "",
+            "added_at": iso(),
+            "kot_batch": None,
+            "sent_to_kitchen": False,
+            "chef_status": "pending",
+        })
+    await save_bill(bill)
+    return bill
 
 
-# --- Expenses
+@api.put("/bills/{bid}/items/{item_id}")
+async def edit_item(bid: str, item_id: str, body: EditItemIn, user: dict = Depends(require_roles("captain", "owner"))):
+    bill = await fetch_bill(bid)
+    if bill["status"] != "open":
+        raise HTTPException(400, "Bill is not open")
+    for idx, it in enumerate(bill["items"]):
+        if it["id"] != item_id:
+            continue
+        # Items already marked ready/served can't be edited
+        if it.get("sent_to_kitchen") and it.get("chef_status") != "pending":
+            raise HTTPException(400, "Item already processed by chef")
+        if body.quantity is not None:
+            it["quantity"] = int(body.quantity)
+        if body.notes is not None:
+            it["notes"] = body.notes
+        if body.menu_item_id and body.menu_item_id != it["menu_item_id"]:
+            menu = await db.menu_items.find_one({"id": body.menu_item_id}, {"_id": 0})
+            if not menu:
+                raise HTTPException(404, "Menu item not found")
+            it["menu_item_id"] = menu["id"]
+            it["name"] = menu["name"]
+            it["price"] = float(menu["price"])
+            it["category"] = menu["category"]
+            it["department"] = dept_for(menu["category"])
+            # swap resets kitchen status
+            it["sent_to_kitchen"] = False
+            it["kot_batch"] = None
+            it["chef_status"] = "pending"
+        bill["items"][idx] = it
+        await save_bill(bill)
+        return bill
+    raise HTTPException(404, "Item not found")
+
+
+@api.delete("/bills/{bid}/items/{item_id}")
+async def delete_item(bid: str, item_id: str, user: dict = Depends(require_roles("captain", "owner"))):
+    bill = await fetch_bill(bid)
+    target = next((i for i in bill["items"] if i["id"] == item_id), None)
+    if not target:
+        raise HTTPException(404, "Item not found")
+    if target.get("sent_to_kitchen") and target.get("chef_status") == "ready":
+        raise HTTPException(400, "Cannot remove item already marked ready")
+    if not target.get("sent_to_kitchen"):
+        bill["items"] = [i for i in bill["items"] if i["id"] != item_id]
+    else:
+        target["chef_status"] = "cancelled"
+    await save_bill(bill)
+    return bill
+
+
+@api.post("/bills/{bid}/send-kot")
+async def send_kot(bid: str, user: dict = Depends(require_roles("captain", "owner"))):
+    """Take all pending items (not yet sent) and put them into a new KOT batch."""
+    bill = await fetch_bill(bid)
+    pending = [i for i in bill["items"] if not i.get("sent_to_kitchen")]
+    if not pending:
+        raise HTTPException(400, "No pending items to send")
+    batch_number = len(bill["kot_batches"]) + 1
+    now = iso()
+    for it in bill["items"]:
+        if not it.get("sent_to_kitchen"):
+            it["sent_to_kitchen"] = True
+            it["kot_batch"] = batch_number
+            it["sent_at"] = now
+    bill["kot_batches"].append({
+        "number": batch_number, "sent_at": now,
+        "sent_by": user["id"], "sent_by_name": user["name"],
+        "item_ids": [i["id"] for i in pending],
+    })
+    await save_bill(bill)
+    return bill
+
+
+@api.put("/bills/{bid}/items/{item_id}/chef")
+async def set_chef_status(bid: str, item_id: str, body: ChefStatusIn, user: dict = Depends(require_roles("chef", "captain", "owner"))):
+    bill = await fetch_bill(bid)
+    for it in bill["items"]:
+        if it["id"] == item_id:
+            it["chef_status"] = body.chef_status
+            it["chef_updated_at"] = iso()
+            it["chef_updated_by"] = user["name"]
+            await save_bill(bill)
+            return bill
+    raise HTTPException(404, "Item not found")
+
+
+@api.post("/bills/{bid}/payment")
+async def record_payment(bid: str, body: PaymentIn, user: dict = Depends(require_roles("cashier", "owner"))):
+    bill = await fetch_bill(bid)
+    bill["payment"] = {
+        "status": "received", "method": body.method,
+        "amount_received": round(float(body.amount), 2),
+        "received_at": iso(),
+        "received_by": user["id"], "received_by_name": user["name"],
+    }
+    bill["status"] = "closed"
+    await save_bill(bill)
+    return bill
+
+
+@api.post("/bills/{bid}/cancel")
+async def cancel_bill(bid: str, user: dict = Depends(require_roles("owner", "captain"))):
+    bill = await fetch_bill(bid)
+    bill["status"] = "cancelled"
+    await save_bill(bill)
+    return bill
+
+
+# ---------- Geofence / Access Guard
+@api.post("/guard/check")
+async def guard_check(body: GuardCheckIn, request: Request, user: dict = Depends(get_current_user)):
+    s = await settings_doc()
+    # Exempt these roles from geofencing
+    if user["role"] in ("owner", "customer"):
+        return {"allowed": True, "ip_ok": True, "geo_ok": True, "reason": "exempt"}
+    ip_ok = True
+    if s.get("ip_check_enabled"):
+        ip = client_ip(request)
+        allowed = s.get("allowed_ips", []) or []
+        ip_ok = False
+        try:
+            for cidr in allowed:
+                cidr = cidr.strip()
+                if not cidr: continue
+                if "/" in cidr:
+                    if ipaddress.ip_address(ip) in ipaddress.ip_network(cidr, strict=False):
+                        ip_ok = True; break
+                else:
+                    if ip == cidr:
+                        ip_ok = True; break
+        except Exception:
+            ip_ok = False
+    geo_ok = True
+    if s.get("geofence_enabled"):
+        if body.lat is None or body.lng is None:
+            geo_ok = False
+        else:
+            d = haversine_m(s["restaurant_lat"], s["restaurant_lng"], body.lat, body.lng)
+            geo_ok = d <= float(s.get("geofence_radius_m", 200))
+    allowed = ip_ok and geo_ok
+    reason = "ok"
+    if not ip_ok: reason = "IP not allowed"
+    elif not geo_ok: reason = "Out of premises"
+    return {"allowed": allowed, "ip_ok": ip_ok, "geo_ok": geo_ok, "reason": reason,
+            "ip": client_ip(request)}
+
+
+# ---------- Expenses (same as before)
+class ExpenseIn(BaseModel):
+    title: str
+    amount: float
+    category: Optional[str] = "general"
+    date: Optional[str] = None
+
 @api.post("/expenses")
 async def create_expense(body: ExpenseIn, user: dict = Depends(require_roles("owner"))):
     date = body.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    doc = {
-        "id": str(uuid.uuid4()),
-        "title": body.title,
-        "amount": float(body.amount),
-        "category": body.category or "general",
-        "date": date,
-        "created_at": iso(),
-    }
-    await db.expenses.insert_one(doc.copy())
-    doc.pop("_id", None)
-    return doc
-
+    d = {"id": str(uuid.uuid4()), "title": body.title, "amount": float(body.amount),
+         "category": body.category or "general", "date": date, "created_at": iso()}
+    await db.expenses.insert_one(d.copy())
+    d.pop("_id", None)
+    return d
 
 @api.get("/expenses")
 async def list_expenses(date: Optional[str] = None, user: dict = Depends(require_roles("owner"))):
-    q = {}
-    if date:
-        q["date"] = date
-    items = await db.expenses.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)
-    return items
+    q = {"date": date} if date else {}
+    return await db.expenses.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)
 
-
-@api.delete("/expenses/{expense_id}")
-async def delete_expense(expense_id: str, user: dict = Depends(require_roles("owner"))):
-    res = await db.expenses.delete_one({"id": expense_id})
-    if res.deleted_count == 0:
+@api.delete("/expenses/{eid}")
+async def del_expense(eid: str, user: dict = Depends(require_roles("owner"))):
+    r = await db.expenses.delete_one({"id": eid})
+    if r.deleted_count == 0:
         raise HTTPException(404, "Not found")
     return {"ok": True}
 
 
-# --- Analytics
+# ---------- Analytics & CSV
 @api.get("/analytics/summary")
 async def analytics_summary(date: Optional[str] = None, user: dict = Depends(require_roles("owner"))):
     target = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     start, end = f"{target}T00:00:00", f"{target}T23:59:59.999999+00:00"
-
-    orders = await db.orders.find(
+    bills = await db.bills.find(
         {"created_at": {"$gte": start, "$lt": end}, "status": {"$ne": "cancelled"}},
-        {"_id": 0},
-    ).to_list(5000)
-
-    revenue = round(sum(o["total"] for o in orders), 2)
+        {"_id": 0}).to_list(5000)
+    paid = [b for b in bills if b.get("payment", {}).get("status") == "received"]
+    revenue = round(sum(b["total"] for b in paid), 2)
     cost_of_goods = 0.0
-    category_sales: dict = {}
-    for o in orders:
-        for it in o["items"]:
+    category_sales = {}
+    payment_split = {"cash": 0.0, "upi": 0.0, "card": 0.0}
+    for b in paid:
+        m = b.get("payment", {}).get("method")
+        if m in payment_split:
+            payment_split[m] = round(payment_split[m] + b["total"], 2)
+        for it in b["items"]:
+            if it.get("chef_status") == "cancelled": continue
             menu = await db.menu_items.find_one({"id": it["menu_item_id"]}, {"_id": 0})
-            cost = (menu["cost"] if menu else 0) * it["quantity"]
-            cost_of_goods += cost
-            cat = menu["category"] if menu else "other"
+            cost_of_goods += (menu["cost"] if menu else 0) * it["quantity"]
+            cat = it.get("category", "other")
             category_sales[cat] = round(category_sales.get(cat, 0) + it["price"] * it["quantity"], 2)
     cost_of_goods = round(cost_of_goods, 2)
-
     expenses = await db.expenses.find({"date": target}, {"_id": 0}).to_list(2000)
     spent = round(sum(e["amount"] for e in expenses), 2)
-
     total_cost = round(cost_of_goods + spent, 2)
     profit = round(revenue - total_cost, 2)
     loss = round(-profit, 2) if profit < 0 else 0.0
     net_profit = max(profit, 0.0)
-
+    pending_bills = [b for b in bills if b.get("payment", {}).get("status") != "received"]
+    pending_amount = round(sum(b["total"] for b in pending_bills), 2)
     return {
         "date": target,
-        "orders_count": len(orders),
-        "revenue": revenue,
-        "cost_of_goods": cost_of_goods,
-        "spent": spent,
-        "total_cost": total_cost,
-        "profit": net_profit,
-        "loss": loss,
+        "orders_count": len(paid),
+        "open_bills": len(pending_bills),
+        "pending_amount": pending_amount,
+        "revenue": revenue, "cost_of_goods": cost_of_goods, "spent": spent,
+        "total_cost": total_cost, "profit": net_profit, "loss": loss,
         "category_sales": category_sales,
+        "payment_split": payment_split,
         "pie": [
             {"name": "Profit", "value": net_profit},
             {"name": "Spent", "value": spent},
@@ -469,117 +716,124 @@ async def analytics_summary(date: Optional[str] = None, user: dict = Depends(req
 async def export_csv(date: Optional[str] = None, user: dict = Depends(require_roles("owner"))):
     target = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     start, end = f"{target}T00:00:00", f"{target}T23:59:59.999999+00:00"
-    orders = await db.orders.find({"created_at": {"$gte": start, "$lt": end}}, {"_id": 0}).sort("created_at", 1).to_list(10000)
-
+    bills = await db.bills.find({"created_at": {"$gte": start, "$lt": end}}, {"_id": 0}).sort("created_at", 1).to_list(10000)
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Order#", "Created At", "Staff", "Table", "Customer", "Status", "Items", "Subtotal", "CGST", "SGST", "Total"])
-    for o in orders:
-        items_str = "; ".join([f"{i['quantity']}x {i['name']}" for i in o["items"]])
+    w.writerow(["Bill#", "Created At", "Captain", "Table", "Customer", "Status",
+                "Payment", "Method", "Items", "Subtotal", "CGST", "SGST", "Total"])
+    for b in bills:
+        items_str = "; ".join([f"{i['quantity']}x {i['name']}" for i in b["items"] if i.get("chef_status") != "cancelled"])
+        p = b.get("payment", {}) or {}
         w.writerow([
-            o["order_number"], o["created_at"], o.get("created_by_name", ""),
-            o.get("table_number", "-"), o.get("customer_name", ""), o["status"],
-            items_str, o["subtotal"], o["cgst"], o["sgst"], o["total"],
+            b["bill_number"], b["created_at"], b.get("captain_name", ""),
+            b.get("table_name", ""), b.get("customer_name", ""), b["status"],
+            p.get("status", "pending"), p.get("method") or "",
+            items_str, b["subtotal"], b["cgst"], b["sgst"], b["total"],
         ])
     buf.seek(0)
-    return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="orders_{target}.csv"'},
-    )
+    return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+                            headers={"Content-Disposition": f'attachment; filename="bills_{target}.csv"'})
 
 
-# --- Seeding
+# ---------- Seeding
 SAMPLE_MENU = [
-    # Main Course
     ("Paneer Butter Masala", "Main Course", 240, 110, "Creamy tomato gravy with paneer cubes"),
     ("Dal Makhani", "Main Course", 210, 80, "Slow-cooked black lentils in butter & cream"),
     ("Palak Paneer", "Main Course", 230, 100, "Paneer in a smooth spinach gravy"),
-    # Chinese
     ("Veg Hakka Noodles", "Chinese", 180, 70, "Stir-fried noodles with veggies"),
     ("Chilli Chicken Dry", "Chinese", 260, 120, "Indo-Chinese spicy chicken starter"),
     ("Manchurian Gravy", "Chinese", 200, 80, "Veg balls in tangy Manchurian sauce"),
-    # Biryanis
     ("Hyderabadi Chicken Biryani", "Biryanis", 320, 150, "Dum-cooked aromatic chicken biryani"),
     ("Veg Dum Biryani", "Biryanis", 260, 100, "Fragrant mixed veggies & basmati"),
     ("Mutton Biryani", "Biryanis", 420, 200, "Slow-cooked mutton with saffron rice"),
-    # Roti
     ("Butter Naan", "Roti", 50, 15, "Tandoor-baked naan brushed with butter"),
     ("Tandoori Roti", "Roti", 25, 8, "Whole-wheat roti from the tandoor"),
     ("Lachha Paratha", "Roti", 60, 20, "Flaky layered paratha"),
-    # Fried Rice
+    ("Garlic Naan", "Roti", 70, 20, "Naan topped with fresh garlic & butter"),
     ("Schezwan Fried Rice", "Fried Rice", 200, 70, "Spicy schezwan tossed rice"),
     ("Veg Fried Rice", "Fried Rice", 180, 60, "Classic fried rice with veggies"),
     ("Egg Fried Rice", "Fried Rice", 200, 75, "Wok-tossed egg fried rice"),
-    # Mandi
     ("Chicken Mandi", "Mandi", 380, 180, "Yemeni-style aromatic chicken & rice"),
     ("Mutton Mandi", "Mandi", 520, 260, "Slow-smoked mutton with mandi rice"),
-    # Sweets
     ("Gulab Jamun (2 pc)", "Sweets", 80, 25, "Warm milk dumplings in rose syrup"),
     ("Rasmalai (2 pc)", "Sweets", 120, 40, "Chilled cottage cheese in saffron milk"),
     ("Gajar Halwa", "Sweets", 140, 50, "Carrot halwa with ghee & dry fruits"),
-    # Mutton
     ("Mutton Rogan Josh", "Mutton", 440, 210, "Kashmiri-style slow-cooked mutton"),
     ("Mutton Keema", "Mutton", 360, 170, "Spiced minced mutton"),
     ("Mutton Korma", "Mutton", 460, 220, "Rich, nutty mutton korma"),
+    # Beverages
+    ("Masala Chai", "Beverages", 30, 8, "Strong spiced Indian tea"),
+    ("Cold Coffee", "Beverages", 120, 40, "Chilled frothy cold coffee"),
+    ("Mango Lassi", "Beverages", 110, 35, "Sweet yogurt-mango drink"),
+    ("Strawberry Milkshake", "Beverages", 140, 50, "Creamy strawberry milkshake"),
+    ("Vanilla Icecream Scoop", "Beverages", 90, 30, "Classic vanilla ice cream scoop"),
+    ("Fresh Lime Soda", "Beverages", 60, 15, "Sweet & salt lime soda"),
+]
+
+SAMPLE_INVENTORY = [
+    ("Chicken", "kg", 10, 2, "meat"),
+    ("Mutton", "kg", 6, 2, "meat"),
+    ("Basmati Rice", "kg", 40, 10, "grains"),
+    ("Paneer", "kg", 5, 1, "dairy"),
+    ("Onion", "kg", 25, 5, "vegetables"),
+    ("Tomato", "kg", 20, 5, "vegetables"),
+    ("Ghee", "kg", 3, 1, "dairy"),
+    ("Milk", "ltr", 15, 5, "dairy"),
+    ("Cooking Oil", "ltr", 20, 5, "oils"),
+    ("Wheat Flour (Maida)", "kg", 15, 5, "grains"),
 ]
 
 
 async def seed_startup():
-    # Indexes
     await db.users.create_index("email", unique=True)
     await db.menu_items.create_index("id", unique=True)
-    await db.orders.create_index("id", unique=True)
-    await db.orders.create_index("created_at")
+    await db.bills.create_index("id", unique=True)
+    await db.bills.create_index("created_at")
+    await db.bills.create_index("status")
+    await db.tables.create_index("id", unique=True)
+    await db.inventory.create_index("id", unique=True)
 
-    # Seed owner
-    admin_email = os.environ.get("ADMIN_EMAIL", "owner@spice.com").lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "owner123")
-    existing = await db.users.find_one({"email": admin_email})
-    if not existing:
-        await db.users.insert_one({
-            "id": str(uuid.uuid4()),
-            "name": "Spice Owner",
-            "email": admin_email,
-            "role": "owner",
-            "password_hash": hash_password(admin_password),
-            "created_at": iso(),
-        })
-    elif not verify_password(admin_password, existing["password_hash"]):
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
-
-    # Seed a staff + customer for convenience
-    for email, name, role, pw in [
-        ("staff@spice.com", "Ravi Staff", "staff", "staff123"),
+    # Seed users
+    seed_users = [
+        (os.environ.get("ADMIN_EMAIL", "owner@spice.com"), "Spice Owner", "owner", os.environ.get("ADMIN_PASSWORD", "owner123")),
+        ("captain@spice.com", "Ravi Captain", "captain", "captain123"),
+        ("chef@spice.com", "Aarti Chef", "chef", "chef123"),
+        ("cashier@spice.com", "Nila Cashier", "cashier", "cashier123"),
         ("guest@spice.com", "Aarav Guest", "customer", "guest123"),
-    ]:
-        if not await db.users.find_one({"email": email}):
-            await db.users.insert_one({
-                "id": str(uuid.uuid4()),
-                "name": name,
-                "email": email,
-                "role": role,
-                "password_hash": hash_password(pw),
-                "created_at": iso(),
+        # Keep old staff login working by re-mapping it
+        ("staff@spice.com", "Ravi Staff (legacy)", "captain", "staff123"),
+    ]
+    for email, name, role, pw in seed_users:
+        email = email.lower()
+        existing = await db.users.find_one({"email": email})
+        if not existing:
+            await db.users.insert_one({"id": str(uuid.uuid4()), "name": name, "email": email,
+                                       "role": role, "password_hash": hash_password(pw), "created_at": iso()})
+        elif existing.get("role") == "staff":
+            await db.users.update_one({"email": email}, {"$set": {"role": "captain"}})
+
+    # Seed menu (idempotent per name)
+    for name, cat, price, cost, desc in SAMPLE_MENU:
+        if not await db.menu_items.find_one({"name": name}):
+            await db.menu_items.insert_one({"id": str(uuid.uuid4()), "name": name, "category": cat,
+                                            "price": float(price), "cost": float(cost),
+                                            "description": desc, "is_available": True, "created_at": iso()})
+
+    # Seed tables if empty
+    if await db.tables.count_documents({}) == 0:
+        for i in range(1, 13):
+            await db.tables.insert_one({"id": str(uuid.uuid4()), "name": f"T{i}", "seats": 4, "created_at": iso()})
+
+    # Seed inventory if empty
+    if await db.inventory.count_documents({}) == 0:
+        for name, unit, qty, low, cat in SAMPLE_INVENTORY:
+            await db.inventory.insert_one({
+                "id": str(uuid.uuid4()), "name": name, "unit": unit,
+                "quantity": float(qty), "low_threshold": float(low),
+                "category": cat, "note": "", "created_at": iso(), "updated_at": iso(),
             })
 
-    # Seed menu
-    count = await db.menu_items.count_documents({})
-    if count == 0:
-        for name, cat, price, cost, desc in SAMPLE_MENU:
-            await db.menu_items.insert_one({
-                "id": str(uuid.uuid4()),
-                "name": name,
-                "category": cat,
-                "price": float(price),
-                "cost": float(cost),
-                "description": desc,
-                "is_available": True,
-                "created_at": iso(),
-            })
-
-    # Seed settings
-    await get_settings_doc()
+    await settings_doc()
 
 
 @app.on_event("startup")
@@ -588,7 +842,7 @@ async def on_startup():
         await seed_startup()
         logger.info("Seeding completed.")
     except Exception as e:
-        logger.exception("Seeding failed: %s", e)
+        logger.exception("Seed error: %s", e)
 
 
 @app.on_event("shutdown")
@@ -596,18 +850,15 @@ async def on_shutdown():
     client.close()
 
 
-# --- Health
 @api.get("/")
 async def root():
-    return {"service": "Spice POS API", "status": "ok"}
+    return {"service": "Spice POS API v2", "status": "ok"}
 
 
 app.include_router(api)
 
 app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
+    CORSMiddleware, allow_credentials=True,
     allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"], allow_headers=["*"],
 )
