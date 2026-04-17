@@ -1,0 +1,113 @@
+{
+  "project_name": "Restaurant POS Web App",
+  "theme": "light",
+  "archetype": "1_organic_earthy",
+  "design_philosophy": {
+    "core_principles": [
+      "High functionality meets warm hospitality",
+      "Dense but breathable data presentation for POS efficiency",
+      "Clear visual hierarchy using earthy, appetizing tones"
+    ],
+    "mood": "Warm, inviting, sensory, yet highly operational."
+  },
+  "colors": {
+    "background": "#F9F6F0",
+    "surface": "#FFFFFF",
+    "surface_glass": "rgba(255, 255, 255, 0.8)",
+    "primary": "#C55E38",
+    "primary_hover": "#A84C2B",
+    "secondary": "#5C715E",
+    "accent": "#E8B25C",
+    "text_primary": "#2C2C22",
+    "text_secondary": "#6A6A61",
+    "border": "#E5E1D8",
+    "status": {
+      "new": "#3B82F6",
+      "preparing": "#E8B25C",
+      "ready": "#5C715E",
+      "served": "#9CA3AF"
+    }
+  },
+  "tailwind_theme_extension": {
+    "colors": {
+      "brand": {
+        "50": "#FDF8F6",
+        "100": "#F2E8E5",
+        "500": "#C55E38",
+        "600": "#A84C2B",
+        "900": "#2C2C22"
+      },
+      "earth": {
+        "light": "#F9F6F0",
+        "border": "#E5E1D8",
+        "success": "#5C715E",
+        "warning": "#E8B25C"
+      }
+    }
+  },
+  "typography": {
+    "fonts": {
+      "headings": "Outfit, sans-serif",
+      "body": "IBM Plex Sans, sans-serif",
+      "mono_receipt": "IBM Plex Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-4xl md:text-5xl tracking-tight font-medium text-brand-900",
+      "h2": "text-2xl md:text-3xl tracking-tight font-medium text-brand-900",
+      "h3": "text-xl md:text-2xl tracking-tight font-medium text-brand-900",
+      "body": "text-base leading-relaxed text-brand-900",
+      "small": "text-sm text-text_secondary uppercase tracking-[0.1em]",
+      "receipt": "text-sm font-mono leading-tight text-black"
+    }
+  },
+  "layout_patterns": {
+    "dashboard": "Bento Grid (Control Room): grid-cols-1 md:grid-cols-3 lg:grid-cols-4. gap-6. Flat background widgets with 1px subtle border #E5E1D8.",
+    "pos_screen": "Two-panel layout. Main menu grid (flex-1) with category tabs. Fixed Sidebar (w-96) on right for Cart/Order summary. Sidebar should have soft left shadow shadow-[-10px_0_30px_rgba(0,0,0,0.05)].",
+    "kds_screen": "Masonry grid or flex-wrap of order cards. Dense, easily readable. Highlight status colors.",
+    "receipt_print": "Hidden UI in print mode. Max-width 80mm, pure B&W, monospace font, zero margins. Only the receipt container should be visible on @media print.",
+    "spacing_system": "Generous internal padding: p-6 or p-8 for dashboard containers. p-4 for touch-friendly POS buttons."
+  },
+  "components_strategy": {
+    "surfaces": "Flat solid surfaces. Dashboard widgets use #FFFFFF background, 1px subtle earth-border. No heavy shadows.",
+    "cards": "Subtle roundness rounded-xl (max 12px), border-earth-border.",
+    "buttons": "Large touch targets (min-h-12 for POS). Primary uses solid #C55E38 with text-white. Hover state must explicitly define text-white. Use data-testid attributes.",
+    "forms": "Use Shadcn components, customized with earthy border colors and focus-visible:ring-brand-500.",
+    "tables": "Shadcn tables for Orders List. Left align data, right align monetary values.",
+    "tabs": "Shadcn Tabs, override fixed h-9 to h-12 for touch-friendly category switching on POS."
+  },
+  "motion_and_interactions": {
+    "hover_states": "Buttons lift slightly (-translate-y-0.5), backgrounds darken to brand-600.",
+    "active_states": "Scale down (scale-95) for tactile feedback.",
+    "transitions": "transition-transform 0.2s ease, opacity 0.2s ease",
+    "kds_cards": "Staggered entrance animation when new order arrives."
+  },
+  "assets_and_media": {
+    "icons": "lucide-react",
+    "image_urls": [
+      {
+        "category": "hero_background",
+        "description": "Abstract terracotta texture for login/auth screen background",
+        "url": "https://images.unsplash.com/photo-1727342427606-ce89e636330e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHwxfHx0ZXJyYWNvdHRhJTIwYWJzdHJhY3QlMjB0ZXh0dXJlfGVufDB8fHx8MTc3NjQzMjIwM3ww&ixlib=rb-4.1.0&q=85"
+      },
+      {
+        "category": "restaurant_interior",
+        "description": "Modern restaurant interior for owner dashboard empty states or customer home",
+        "url": "https://images.unsplash.com/photo-1685040235380-a42a129ade4e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjByZXN0YXVyYW50JTIwaW50ZXJpb3J8ZW58MHx8fHwxNzc2NDMyMTkxfDA&ixlib=rb-4.1.0&q=85"
+      },
+      {
+        "category": "menu_item_placeholder",
+        "description": "Default image for Biryani/Indian dishes",
+        "url": "https://images.unsplash.com/photo-1599043513900-ed6fe01d3833?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzR8MHwxfHNlYXJjaHwyfHxpbmRpYW4lMjBiaXJ5YW5pJTIwZGlzaHxlbnwwfHx8fDE3NzY0MzIxOTF8MA&ixlib=rb-4.1.0&q=85"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Ensure all interactive elements have data-testid attributes (e.g., data-testid='pos-item-add').",
+    "POS needs layout optimized for touch - big buttons, visible totals. No hover-only actions.",
+    "Implement Shadcn Tabs for menu categories. Change the default height to h-auto or py-3 for better touch targets.",
+    "Use Recharts or Shadcn Charts for the owner dashboard (Profit/Spent/Loss pie chart).",
+    "For KOT and Bill, add a Print media query in CSS that hides the sidebar and nav, setting body to white, font to mono, and formats the receipt properly.",
+    "Do NOT use transparent backgrounds for the main dashboard headers. Keep them pure white.",
+    "Ensure total cart amount calculates correctly with CGST and SGST included."
+  ]
+}
