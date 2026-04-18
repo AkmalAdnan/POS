@@ -102,9 +102,17 @@ function Table({ bills }) {
                 <td className="px-4 py-3"><Badge className={`uppercase tracking-widest text-[10px] border ${STATUS_COLORS[b.status]}`}>{b.status}</Badge></td>
                 <td className="px-4 py-3">
                   {paid ? (
-                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 uppercase tracking-widest text-[10px]">
-                      {b.payment.method?.toUpperCase() || "PAID"}
-                    </Badge>
+                    <div>
+                      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 uppercase tracking-widest text-[10px]">
+                        {b.payment.method?.toUpperCase() || "PAID"}
+                      </Badge>
+                      {b.payment.received_by_name && (
+                        <div className="text-[10px] text-emerald-700 mt-1">
+                          {b.payment.received_by_name}
+                          <span className="ml-1 uppercase tracking-widest text-emerald-600/70">· {b.payment.received_by_role || ""}</span>
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <Badge className="bg-red-100 text-red-800 border-red-200 uppercase tracking-widest text-[10px]">Pending</Badge>
                   )}

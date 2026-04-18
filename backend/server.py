@@ -529,7 +529,8 @@ async def create_bill(body: BillCreate, user: dict = Depends(require_roles("capt
         "sgst_rate": s["sgst_rate"],
         "subtotal": 0, "cgst": 0, "sgst": 0, "total": 0,
         "payment": {"status": "pending", "method": None, "amount_received": 0,
-                    "received_at": None, "received_by": None, "received_by_name": None},
+                    "received_at": None, "received_by": None, "received_by_name": None,
+                    "received_by_role": None},
         "created_at": iso(), "updated_at": iso(),
     }
     await db.bills.insert_one(bill.copy())
@@ -696,6 +697,7 @@ async def record_payment(bid: str, body: PaymentIn, user: dict = Depends(require
         "amount_received": round(float(body.amount), 2),
         "received_at": iso(),
         "received_by": user["id"], "received_by_name": user["name"],
+        "received_by_role": user["role"],
     }
     bill["status"] = "closed"
     await save_bill(bill)
@@ -835,15 +837,18 @@ async def export_csv(date: Optional[str] = None, user: dict = Depends(require_ro
     bills = await db.bills.find({"created_at": {"$gte": start, "$lt": end}}, {"_id": 0}).sort("created_at", 1).to_list(10000)
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Bill#", "Created At", "Captain", "Table", "Customer", "Status",
-                "Payment", "Method", "Items", "Subtotal", "CGST", "SGST", "Total"])
+    w.writerow(["Bill#", "Created At", "Captain", "Table", "Customer", "Mobile", "Status",
+                "Payment", "Method", "Collected By", "Collected By Role", "Collected At",
+                "Items", "Subtotal", "CGST", "SGST", "Total"])
     for b in bills:
         items_str = "; ".join([f"{i['quantity']}x {i['name']}" for i in b["items"] if i.get("chef_status") != "cancelled"])
         p = b.get("payment", {}) or {}
         w.writerow([
             b["bill_number"], b["created_at"], b.get("captain_name", ""),
-            b.get("table_name", ""), b.get("customer_name", ""), b["status"],
-            p.get("status", "pending"), p.get("method") or "",
+            b.get("table_name", ""), b.get("customer_name", ""), b.get("customer_mobile", ""),
+            b["status"], p.get("status", "pending"), p.get("method") or "",
+            p.get("received_by_name") or "", p.get("received_by_role") or "",
+            p.get("received_at") or "",
             items_str, b["subtotal"], b["cgst"], b["sgst"], b["total"],
         ])
     buf.seek(0)

@@ -176,6 +176,12 @@ function BillGrid({ bills, color, label, onAction, actionLabel = "Action" }) {
               <div className="text-right">
                 <div className={`font-heading text-2xl ${paid ? "text-emerald-600" : "text-brand-500"}`}>{money(paid ? b.payment.amount_received : b.total)}</div>
                 <div className="text-[10px] uppercase tracking-widest text-brand-900/50">{b.items.filter((i) => i.chef_status !== "cancelled").length} items</div>
+                {paid && b.payment.received_by_name && (
+                  <div className="text-[10px] text-emerald-700 mt-1" data-testid={`cashier-collected-by-${b.id}`}>
+                    by <b>{b.payment.received_by_name}</b>
+                    <span className="ml-1 uppercase tracking-widest text-[9px] text-emerald-600/80">· {b.payment.received_by_role || "staff"}</span>
+                  </div>
+                )}
               </div>
             </header>
             <div className="mt-3 flex items-center gap-2">
