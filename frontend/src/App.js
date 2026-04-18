@@ -12,10 +12,10 @@ import Unauthorized from "@/pages/Unauthorized";
 
 import Dashboard from "@/pages/Dashboard";
 import MenuManage from "@/pages/MenuManage";
-import Expenses from "@/pages/Expenses";
 import Settings from "@/pages/Settings";
 import OwnerTables from "@/pages/owner/TablesManage";
 import Inventory from "@/pages/owner/Inventory";
+import Staff from "@/pages/owner/Staff";
 
 import CaptainTables from "@/pages/captain/Tables";
 import CaptainBill from "@/pages/captain/Bill";
@@ -23,17 +23,14 @@ import CaptainBill from "@/pages/captain/Bill";
 import ChefKDS from "@/pages/chef/KDS";
 import CashierPayments from "@/pages/cashier/Payments";
 
-import Orders from "@/pages/Orders";
+import BillsView from "@/pages/BillsView";
 import CustomerMenu from "@/pages/CustomerMenu";
 import PrintKOT from "@/pages/PrintKOT";
 import PrintBill from "@/pages/PrintBill";
 
 const HOME_BY_ROLE = {
-  owner: "/dashboard",
-  captain: "/captain",
-  chef: "/kds",
-  cashier: "/cashier",
-  customer: "/browse",
+  owner: "/dashboard", captain: "/captain", chef: "/kds",
+  cashier: "/cashier", customer: "/browse",
 };
 
 function RootRedirect() {
@@ -43,7 +40,6 @@ function RootRedirect() {
   return <Navigate to={HOME_BY_ROLE[user.role] || "/"} replace />;
 }
 
-// Wraps a protected route with role check + access guard
 const Guarded = ({ roles, children }) => (
   <ProtectedRoute roles={roles}>
     <AccessGuard>{children}</AccessGuard>
@@ -63,14 +59,17 @@ function App() {
           {/* Owner */}
           <Route path="/dashboard" element={<Guarded roles={["owner"]}><Dashboard /></Guarded>} />
           <Route path="/menu" element={<Guarded roles={["owner"]}><MenuManage /></Guarded>} />
-          <Route path="/expenses" element={<Guarded roles={["owner"]}><Expenses /></Guarded>} />
           <Route path="/settings" element={<Guarded roles={["owner"]}><Settings /></Guarded>} />
           <Route path="/owner/tables" element={<Guarded roles={["owner"]}><OwnerTables /></Guarded>} />
+          <Route path="/owner/staff" element={<Guarded roles={["owner"]}><Staff /></Guarded>} />
           <Route path="/inventory" element={<Guarded roles={["owner", "captain"]}><Inventory /></Guarded>} />
 
           {/* Captain */}
           <Route path="/captain" element={<Guarded roles={["captain", "owner"]}><CaptainTables /></Guarded>} />
           <Route path="/captain/bill/:id" element={<Guarded roles={["captain", "owner"]}><CaptainBill /></Guarded>} />
+          <Route path="/captain/running" element={<Guarded roles={["captain", "owner"]}><BillsView mode="running" /></Guarded>} />
+          <Route path="/captain/all" element={<Guarded roles={["captain", "owner"]}><BillsView mode="all" /></Guarded>} />
+          <Route path="/captain/closed" element={<Guarded roles={["captain", "owner"]}><BillsView mode="closed" /></Guarded>} />
 
           {/* Chef */}
           <Route path="/kds" element={<Guarded roles={["chef", "captain", "owner"]}><ChefKDS /></Guarded>} />
@@ -78,9 +77,9 @@ function App() {
           {/* Cashier */}
           <Route path="/cashier" element={<Guarded roles={["cashier", "owner"]}><CashierPayments /></Guarded>} />
 
-          {/* Shared */}
-          <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
-          <Route path="/my-orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+          {/* Shared Orders */}
+          <Route path="/orders" element={<ProtectedRoute><BillsView mode="all" /></ProtectedRoute>} />
+          <Route path="/my-orders" element={<ProtectedRoute><BillsView mode="all" /></ProtectedRoute>} />
 
           {/* Customer */}
           <Route path="/browse" element={<ProtectedRoute roles={["customer", "owner", "captain"]}><CustomerMenu /></ProtectedRoute>} />

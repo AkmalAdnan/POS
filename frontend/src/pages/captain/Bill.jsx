@@ -23,6 +23,7 @@ export default function CaptainBill() {
   const [bill, setBill] = useState(null);
   const [menu, setMenu] = useState([]);
   const [query, setQuery] = useState("");
+  const [tab, setTab] = useState("All");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [itemNotes, setItemNotes] = useState({});
   const [editing, setEditing] = useState(null); // {item, newMenuItemId, qty, notes}
@@ -33,9 +34,12 @@ export default function CaptainBill() {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
+  // when user types a search, jump to the "All" tab for best results
+  useEffect(() => { if (query.trim()) setTab("All"); }, [query]);
+
   if (!bill) return <AppShell><div className="py-20 text-center text-brand-900/60">Loading bill…</div></AppShell>;
 
-  const categories = Array.from(new Set(menu.map((i) => i.category)));
+  const categories = ["All", ...Array.from(new Set(menu.map((i) => i.category)))];
   const filteredMenu = menu.filter((i) =>
     i.is_available && i.name.toLowerCase().includes(query.toLowerCase())
   );
@@ -126,10 +130,10 @@ export default function CaptainBill() {
               data-testid="bill-search-input"
             />
           </div>
-          <Tabs defaultValue={categories[0]} className="w-full">
+          <Tabs value={tab} onValueChange={setTab} className="w-full">
             <TabsList className="h-auto flex flex-wrap gap-1 bg-white border border-earth-border p-1 rounded-xl">
               {categories.map((c) => (
-                <TabsTrigger key={c} value={c} className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg">
+                <TabsTrigger key={c} value={c} className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid={`bill-tab-${c.toLowerCase().replace(/\s|\//g, "-")}`}>
                   {c}
                 </TabsTrigger>
               ))}
@@ -137,15 +141,18 @@ export default function CaptainBill() {
             {categories.map((c) => (
               <TabsContent key={c} value={c} className="mt-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {filteredMenu.filter((x) => x.category === c).map((it) => (
+                  {filteredMenu.filter((x) => c === "All" ? true : x.category === c).map((it) => (
                     <div key={it.id} className="bg-white border border-earth-border rounded-xl p-4" data-testid={`bill-menu-${it.id}`}>
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="font-heading text-base leading-tight">{it.name}</div>
-                          <div className="text-[11px] uppercase tracking-[0.18em] text-brand-500 mt-0.5">{it.department}</div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[11px] uppercase tracking-[0.18em] text-brand-500">{it.category}</span>
+                            <span className="text-[10px] uppercase tracking-[0.18em] text-brand-900/40">→ {it.department}</span>
+                          </div>
                           <div className="text-xs text-brand-900/60 mt-1 line-clamp-2">{it.description}</div>
                         </div>
-                        <div className="text-sm font-semibold">{money(it.price)}</div>
+                        <div className="text-sm font-semibold whitespace-nowrap">{money(it.price)}</div>
                       </div>
                       <div className="flex items-center gap-2 mt-3">
                         <Input
@@ -161,6 +168,9 @@ export default function CaptainBill() {
                       </div>
                     </div>
                   ))}
+                  {filteredMenu.filter((x) => c === "All" ? true : x.category === c).length === 0 && (
+                    <div className="col-span-full text-center py-8 text-sm text-brand-900/50">No matches for "{query}".</div>
+                  )}
                 </div>
               </TabsContent>
             ))}

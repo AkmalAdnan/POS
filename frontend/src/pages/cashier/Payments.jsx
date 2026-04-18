@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { api, money } from "@/lib/api";
+import { api, money, API_BASE } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { CreditCard, Wallet, Smartphone, ReceiptText, Printer } from "lucide-react";
+import { CreditCard, Wallet, Smartphone, ReceiptText, Printer, Download, Lock } from "lucide-react";
 
 const METHODS = [
   { id: "cash", label: "Cash", icon: Wallet },
@@ -16,14 +17,17 @@ const METHODS = [
 
 export default function CashierPayments() {
   const [bills, setBills] = useState([]);
+  const [totals, setTotals] = useState(null);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [active, setActive] = useState(null);  // bill being paid
+  const [active, setActive] = useState(null);
   const [method, setMethod] = useState("cash");
   const [amount, setAmount] = useState(0);
 
   const load = async () => {
     const { data } = await api.get("/bills", { params: { date } });
     setBills(data);
+    const { data: t } = await api.get("/cashier/totals", { params: { date } });
+    setTotals(t);
   };
   useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [date]);
 
@@ -31,13 +35,27 @@ export default function CashierPayments() {
   const confirmPay = async () => {
     try {
       await api.post(`/bills/${active.id}/payment`, { method, amount: Number(amount) });
-      toast.success(`Payment received via ${method.toUpperCase()} for Bill #${active.bill_number}`);
+      toast.success(`Payment received · ${method.toUpperCase()} · Bill #${active.bill_number}`);
       setActive(null); load();
     } catch (e) { toast.error(e.response?.data?.detail || "Payment failed"); }
   };
 
-  const pending = bills.filter((b) => b.payment?.status !== "received" && b.status !== "cancelled");
-  const received = bills.filter((b) => b.payment?.status === "received");
+  const closeDay = async () => {
+    if (!window.confirm(`Close sales for ${date}? This seals today's totals.`)) return;
+    try {
+      await api.post("/cashier/close-day", null, { params: { date } });
+      toast.success(`Day ${date} closed`);
+      // trigger CSV download
+      const token = localStorage.getItem("spice_token");
+      const res = await fetch(`${API_BASE}/analytics/export?date=${date}`, { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const blob = await res.blob();
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `bills_${date}.csv`; document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
+  };
+
+  const inProgress = bills.filter((b) => b.payment?.status !== "received" && b.status !== "cancelled");
+  const completed = bills.filter((b) => b.payment?.status === "received");
+  const cancelled = bills.filter((b) => b.status === "cancelled");
 
   return (
     <AppShell>
@@ -49,86 +67,69 @@ export default function CashierPayments() {
         <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-11 w-[170px]" data-testid="cashier-date-input" />
       </div>
 
-      <h2 className="font-heading text-xl mt-2 mb-2">Payment Pending ({pending.length})</h2>
-      {pending.length === 0 ? (
-        <div className="bg-white border border-earth-border rounded-2xl p-10 text-center text-brand-900/60">No pending bills. 🎉</div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {pending.map((b) => (
-            <article key={b.id} className="relative bg-white border-2 border-red-300 rounded-2xl p-5" data-testid={`cashier-pending-${b.id}`}>
-              <div className="absolute -top-2 left-5 px-2 bg-red-500 text-white text-[10px] font-semibold tracking-widest rounded-sm">PAYMENT PENDING</div>
-              <header className="flex items-center justify-between mt-1">
-                <div>
-                  <div className="font-heading text-2xl">#{b.bill_number}</div>
-                  <div className="text-xs text-brand-900/50">Table {b.table_name} · {new Date(b.created_at).toLocaleTimeString()}</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-heading text-2xl text-brand-500">{money(b.total)}</div>
-                  <div className="text-[10px] uppercase tracking-widest text-brand-900/50">{b.items.length} items</div>
-                </div>
-              </header>
-              <div className="mt-3 text-xs text-brand-900/60 line-clamp-2">
-                {b.items.filter((i) => i.chef_status !== "cancelled").map((i) => `${i.quantity}× ${i.name}`).join(", ")}
-              </div>
-              <div className="mt-4 flex gap-2">
-                <Button className="flex-1 bg-brand-500 hover:bg-brand-600 text-white" onClick={() => startPay(b)} data-testid={`cashier-collect-${b.id}`}>
-                  Collect payment
-                </Button>
-                <Button variant="outline" onClick={() => window.open(`/print/bill/${b.id}`, "_blank")} data-testid={`cashier-bill-${b.id}`}>
-                  <ReceiptText className="w-4 h-4" />
-                </Button>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
+      <Tabs defaultValue="inprogress">
+        <TabsList className="bg-white border border-earth-border p-1 rounded-xl h-auto flex flex-wrap gap-1">
+          <TabsTrigger value="inprogress" className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid="cashier-tab-inprogress">
+            In Progress ({inProgress.length})
+          </TabsTrigger>
+          <TabsTrigger value="completed" className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid="cashier-tab-completed">
+            Completed ({completed.length})
+          </TabsTrigger>
+          <TabsTrigger value="cancelled" className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid="cashier-tab-cancelled">
+            Cancelled ({cancelled.length})
+          </TabsTrigger>
+          <TabsTrigger value="totals" className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid="cashier-tab-totals">
+            Today's Totals
+          </TabsTrigger>
+        </TabsList>
 
-      <h2 className="font-heading text-xl mt-10 mb-2">Payment Received ({received.length})</h2>
-      {received.length === 0 ? (
-        <div className="bg-white border border-earth-border rounded-2xl p-8 text-center text-brand-900/50 text-sm">No payments received yet today.</div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {received.map((b) => (
-            <article key={b.id} className="relative bg-white border-2 border-emerald-300 rounded-2xl p-5" data-testid={`cashier-received-${b.id}`}>
-              <div className="absolute -top-2 left-5 px-2 bg-emerald-600 text-white text-[10px] font-semibold tracking-widest rounded-sm">
-                PAYMENT RECEIVED · {b.payment.method?.toUpperCase()}
-              </div>
-              <header className="flex items-center justify-between mt-1">
-                <div>
-                  <div className="font-heading text-2xl">#{b.bill_number}</div>
-                  <div className="text-xs text-brand-900/50">Table {b.table_name} · {new Date(b.payment.received_at).toLocaleTimeString()}</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-heading text-xl text-emerald-600">{money(b.payment.amount_received)}</div>
-                  <div className="text-[10px] text-brand-900/50">by {b.payment.received_by_name}</div>
-                </div>
-              </header>
-              <button onClick={() => window.open(`/print/bill/${b.id}`, "_blank")} className="mt-2 text-xs text-brand-500 hover:underline inline-flex items-center gap-1">
-                <Printer className="w-3 h-3" /> Reprint bill
-              </button>
-            </article>
-          ))}
-        </div>
-      )}
+        <TabsContent value="inprogress" className="mt-4">
+          <BillGrid bills={inProgress} color="red" label="PAYMENT PENDING" onAction={startPay} actionLabel="Collect payment" />
+        </TabsContent>
 
-      {/* Payment dialog */}
+        <TabsContent value="completed" className="mt-4">
+          <BillGrid bills={completed} color="green" label={null} onAction={null} />
+        </TabsContent>
+
+        <TabsContent value="cancelled" className="mt-4">
+          <BillGrid bills={cancelled} color="gray" label="CANCELLED" onAction={null} />
+        </TabsContent>
+
+        <TabsContent value="totals" className="mt-4">
+          {totals && (
+            <div className="bg-white border border-earth-border rounded-2xl p-6">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.25em] text-brand-500">Total collected on {totals.date}</div>
+                  <div className="font-heading text-5xl md:text-6xl mt-2 text-brand-500" data-testid="cashier-total-collected">{money(totals.total_collected)}</div>
+                  <div className="text-sm text-brand-900/60 mt-2">{totals.paid_count} paid bills · {totals.pending_count} pending ({money(totals.pending_amount)}) · {totals.cancelled_count} cancelled</div>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <Button onClick={closeDay} className="bg-brand-500 hover:bg-brand-600 text-white h-11" data-testid="cashier-close-day-btn">
+                    <Lock className="w-4 h-4 mr-2" /> Close day / export
+                  </Button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                <MethodCard icon={Wallet} label="Cash" value={totals.payment_split.cash} tint="text-emerald-600" />
+                <MethodCard icon={Smartphone} label="UPI" value={totals.payment_split.upi} tint="text-brand-500" />
+                <MethodCard icon={CreditCard} label="Card" value={totals.payment_split.card} tint="text-amber-600" />
+              </div>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
       <Dialog open={!!active} onOpenChange={(v) => !v && setActive(null)}>
         <DialogContent data-testid="cashier-dialog" className="max-w-md">
           <DialogHeader><DialogTitle className="font-heading">Collect payment · Bill #{active?.bill_number}</DialogTitle></DialogHeader>
           {active && (
             <div>
-              <div className="text-sm text-brand-900/70">Table {active.table_name} · {active.customer_name || "Walk-in"}</div>
+              <div className="text-sm text-brand-900/70">Table {active.table_name} · {active.customer_name || "Walk-in"} {active.customer_mobile && `· ${active.customer_mobile}`}</div>
               <div className="font-heading text-4xl text-brand-500 mt-2">{money(active.total)}</div>
               <div className="grid grid-cols-3 gap-2 mt-5">
                 {METHODS.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => setMethod(m.id)}
-                    className={`rounded-xl border p-3 text-center transition-all ${
-                      method === m.id ? "border-brand-500 bg-brand-50 text-brand-900" : "border-earth-border hover:border-brand-300"
-                    }`}
-                    data-testid={`cashier-method-${m.id}`}
-                  >
+                  <button key={m.id} onClick={() => setMethod(m.id)} className={`rounded-xl border p-3 text-center transition-all ${method === m.id ? "border-brand-500 bg-brand-50 text-brand-900" : "border-earth-border hover:border-brand-300"}`} data-testid={`cashier-method-${m.id}`}>
                     <m.icon className="w-5 h-5 mx-auto" />
                     <div className="mt-1 text-xs font-medium uppercase tracking-widest">{m.label}</div>
                   </button>
@@ -142,12 +143,66 @@ export default function CashierPayments() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setActive(null)}>Cancel</Button>
-            <Button onClick={confirmPay} className="bg-brand-500 hover:bg-brand-600 text-white" data-testid="cashier-confirm-pay-btn">
-              Mark as received
-            </Button>
+            <Button onClick={confirmPay} className="bg-brand-500 hover:bg-brand-600 text-white" data-testid="cashier-confirm-pay-btn">Mark as received</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </AppShell>
+  );
+}
+
+function BillGrid({ bills, color, label, onAction, actionLabel = "Action" }) {
+  if (bills.length === 0) return <div className="bg-white border border-earth-border rounded-2xl p-10 text-center text-brand-900/60">No bills in this status.</div>;
+  const colorMap = {
+    red: { bd: "border-red-300", pill: "bg-red-500" },
+    green: { bd: "border-emerald-300", pill: "bg-emerald-600" },
+    gray: { bd: "border-gray-300", pill: "bg-gray-500" },
+  };
+  const c = colorMap[color];
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {bills.map((b) => {
+        const paid = b.payment?.status === "received";
+        const pillText = label || `PAYMENT RECEIVED · ${b.payment?.method?.toUpperCase() || "—"}`;
+        return (
+          <article key={b.id} className={`relative bg-white border-2 ${c.bd} rounded-2xl p-5`} data-testid={`cashier-card-${b.id}`}>
+            <div className={`absolute -top-2 left-5 px-2 ${c.pill} text-white text-[10px] font-semibold tracking-widest rounded-sm`}>{pillText}</div>
+            <header className="flex items-center justify-between mt-1">
+              <div>
+                <div className="font-heading text-2xl">#{b.bill_number}</div>
+                <div className="text-xs text-brand-900/50">Table {b.table_name} · {new Date(b.created_at).toLocaleTimeString()}</div>
+                {b.customer_name && <div className="text-[11px] text-brand-900/60 mt-0.5">{b.customer_name}{b.customer_mobile ? ` · ${b.customer_mobile}` : ""}</div>}
+              </div>
+              <div className="text-right">
+                <div className={`font-heading text-2xl ${paid ? "text-emerald-600" : "text-brand-500"}`}>{money(paid ? b.payment.amount_received : b.total)}</div>
+                <div className="text-[10px] uppercase tracking-widest text-brand-900/50">{b.items.filter((i) => i.chef_status !== "cancelled").length} items</div>
+              </div>
+            </header>
+            <div className="mt-3 flex items-center gap-2">
+              {onAction && (
+                <Button className="flex-1 bg-brand-500 hover:bg-brand-600 text-white" onClick={() => onAction(b)} data-testid={`cashier-action-${b.id}`}>
+                  {actionLabel}
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => window.open(`/print/bill/${b.id}`, "_blank")} data-testid={`cashier-print-${b.id}`}>
+                <ReceiptText className="w-4 h-4" />
+              </Button>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function MethodCard({ icon: Icon, label, value, tint }) {
+  return (
+    <div className="bg-[#F9F6F0] border border-earth-border rounded-xl p-4 flex items-center gap-3">
+      <div className={`w-10 h-10 rounded-lg bg-white flex items-center justify-center ${tint}`}><Icon className="w-5 h-5" /></div>
+      <div>
+        <div className="text-[11px] uppercase tracking-[0.2em] text-brand-900/50">{label}</div>
+        <div className="font-heading text-lg">{money(value)}</div>
+      </div>
+    </div>
   );
 }

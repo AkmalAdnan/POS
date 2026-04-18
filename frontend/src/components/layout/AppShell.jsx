@@ -12,23 +12,23 @@ const LINKS = {
   owner: [
     { to: "/dashboard", label: "Dashboard" },
     { to: "/owner/tables", label: "Tables" },
+    { to: "/owner/staff", label: "Staff" },
     { to: "/menu", label: "Menu" },
     { to: "/inventory", label: "Inventory" },
-    { to: "/expenses", label: "Expenses" },
-    { to: "/orders", label: "Bills" },
+    { to: "/orders", label: "Orders" },
     { to: "/settings", label: "Settings" },
   ],
   captain: [
     { to: "/captain", label: "Tables" },
-    { to: "/orders", label: "Bills" },
-    { to: "/inventory", label: "Inventory" },
+    { to: "/captain/running", label: "Running Orders" },
+    { to: "/captain/all", label: "All Orders" },
+    { to: "/captain/closed", label: "Orders Closed" },
   ],
   chef: [
     { to: "/kds", label: "Kitchen" },
   ],
   cashier: [
     { to: "/cashier", label: "Payments" },
-    { to: "/orders", label: "Bills" },
   ],
   customer: [
     { to: "/browse", label: "Menu" },
@@ -55,9 +55,9 @@ export default function AppShell({ children }) {
             </div>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden md:flex items-center gap-1 flex-wrap">
             {links.map((l) => (
-              <NavLink key={l.to} to={l.to} className={linkCls} data-testid={`nav-${l.label.toLowerCase().replace(/\s+/g, "-")}`}>
+              <NavLink key={l.to} to={l.to} end className={linkCls} data-testid={`nav-${l.label.toLowerCase().replace(/\s+/g, "-")}`}>
                 {l.label}
               </NavLink>
             ))}
@@ -71,13 +71,7 @@ export default function AppShell({ children }) {
               </div>
             )}
             {user ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => { await logout(); navigate("/login"); }}
-                data-testid="nav-logout"
-                className="border-earth-border hover:bg-brand-50"
-              >
+              <Button variant="outline" size="sm" onClick={async () => { await logout(); navigate("/login"); }} data-testid="nav-logout" className="border-earth-border hover:bg-brand-50">
                 <LogOut className="w-4 h-4 mr-1" /> Logout
               </Button>
             ) : (

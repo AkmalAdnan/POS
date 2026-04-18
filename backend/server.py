@@ -110,6 +110,7 @@ class MenuItemIn(BaseModel):
 class BillCreate(BaseModel):
     table_id: str
     customer_name: Optional[str] = ""
+    customer_mobile: Optional[str] = ""
     notes: Optional[str] = ""
 
 class AddItemsIn(BaseModel):
@@ -121,7 +122,7 @@ class EditItemIn(BaseModel):
     notes: Optional[str] = None
 
 class ChefStatusIn(BaseModel):
-    chef_status: Literal["pending", "ready", "cancelled"]
+    chef_status: Literal["pending", "ready", "served", "cancelled"]
 
 class PaymentIn(BaseModel):
     method: Literal["cash", "upi", "card"]
@@ -130,6 +131,20 @@ class PaymentIn(BaseModel):
 class TableIn(BaseModel):
     name: str
     seats: int = 4
+    sort_order: Optional[int] = None
+
+
+class StaffIn(BaseModel):
+    name: str
+    email: EmailStr
+    password: Optional[str] = None  # required on create, optional on update
+    role: Literal["captain", "chef", "cashier"]
+
+
+class StaffUpdateIn(BaseModel):
+    name: Optional[str] = None
+    password: Optional[str] = None
+    role: Optional[Literal["captain", "chef", "cashier"]] = None
 
 class InventoryIn(BaseModel):
     name: str
@@ -308,7 +323,7 @@ async def delete_menu(item_id: str, user: dict = Depends(require_roles("owner"))
 # ---------- Tables
 @api.get("/tables")
 async def list_tables(user: dict = Depends(get_current_user)):
-    tables = await db.tables.find({}, {"_id": 0}).sort("name", 1).to_list(500)
+    tables = await db.tables.find({}, {"_id": 0}).sort("sort_order", 1).to_list(500)
     # Attach current open bill (if any)
     open_bills = await db.bills.find({"status": "open"}, {"_id": 0, "id": 1, "table_id": 1, "bill_number": 1, "total": 1, "captain_name": 1, "created_at": 1, "payment": 1}).to_list(500)
     by_table = {b["table_id"]: b for b in open_bills}
@@ -372,6 +387,93 @@ async def delete_inventory(iid: str, user: dict = Depends(require_roles("owner")
     return {"ok": True}
 
 
+# ---------- Staff (owner only)
+@api.get("/staff")
+async def list_staff(user: dict = Depends(require_roles("owner"))):
+    users = await db.users.find({"role": {"$in": ["captain", "chef", "cashier"]}},
+                                {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(500)
+    return users
+
+@api.post("/staff")
+async def create_staff(body: StaffIn, user: dict = Depends(require_roles("owner"))):
+    if not body.password:
+        raise HTTPException(400, "Password required")
+    email = body.email.lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(400, "Email already registered")
+    d = {"id": str(uuid.uuid4()), "name": body.name, "email": email, "role": body.role,
+         "password_hash": hash_password(body.password), "created_at": iso()}
+    await db.users.insert_one(d.copy())
+    return {"id": d["id"], "name": d["name"], "email": d["email"], "role": d["role"], "created_at": d["created_at"]}
+
+@api.put("/staff/{sid}")
+async def update_staff(sid: str, body: StaffUpdateIn, user: dict = Depends(require_roles("owner"))):
+    existing = await db.users.find_one({"id": sid})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    if existing["role"] == "owner":
+        raise HTTPException(400, "Cannot modify owner accounts here")
+    patch = {}
+    if body.name is not None: patch["name"] = body.name
+    if body.role is not None: patch["role"] = body.role
+    if body.password: patch["password_hash"] = hash_password(body.password)
+    if patch:
+        await db.users.update_one({"id": sid}, {"$set": patch})
+    u = await db.users.find_one({"id": sid}, {"_id": 0, "password_hash": 0})
+    return u
+
+@api.delete("/staff/{sid}")
+async def delete_staff(sid: str, user: dict = Depends(require_roles("owner"))):
+    existing = await db.users.find_one({"id": sid})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    if existing["role"] == "owner":
+        raise HTTPException(400, "Cannot delete owner accounts")
+    await db.users.delete_one({"id": sid})
+    return {"ok": True}
+
+
+# ---------- Cashier Close Day
+@api.get("/cashier/totals")
+async def cashier_totals(date: Optional[str] = None, user: dict = Depends(require_roles("cashier", "owner"))):
+    target = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    start, end = f"{target}T00:00:00", f"{target}T23:59:59.999999+00:00"
+    bills = await db.bills.find(
+        {"created_at": {"$gte": start, "$lt": end}},
+        {"_id": 0}).to_list(5000)
+    paid = [b for b in bills if b.get("payment", {}).get("status") == "received"]
+    pending = [b for b in bills if b.get("payment", {}).get("status") != "received" and b["status"] != "cancelled"]
+    cancelled = [b for b in bills if b["status"] == "cancelled"]
+    pay_split = {"cash": 0.0, "upi": 0.0, "card": 0.0}
+    for b in paid:
+        m = b.get("payment", {}).get("method")
+        if m in pay_split:
+            pay_split[m] = round(pay_split[m] + b["total"], 2)
+    return {
+        "date": target,
+        "total_collected": round(sum(b["total"] for b in paid), 2),
+        "pending_amount": round(sum(b["total"] for b in pending), 2),
+        "payment_split": pay_split,
+        "paid_count": len(paid),
+        "pending_count": len(pending),
+        "cancelled_count": len(cancelled),
+    }
+
+@api.post("/cashier/close-day")
+async def close_day(date: Optional[str] = None, user: dict = Depends(require_roles("cashier", "owner"))):
+    target = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    existing = await db.day_closures.find_one({"date": target}, {"_id": 0})
+    if existing:
+        return existing
+    totals = await cashier_totals(target, user)
+    d = {"id": str(uuid.uuid4()), "date": target, **totals,
+         "closed_at": iso(), "closed_by": user["name"]}
+    d.pop("_id", None)
+    await db.day_closures.insert_one(d.copy())
+    d.pop("_id", None)
+    return d
+
+
 # ---------- Bills / Orders
 async def next_bill_number() -> int:
     d = await db.counters.find_one_and_update({"id": "bills"}, {"$inc": {"value": 1}}, upsert=True, return_document=True)
@@ -416,6 +518,7 @@ async def create_bill(body: BillCreate, user: dict = Depends(require_roles("capt
         "table_id": body.table_id,
         "table_name": table["name"],
         "customer_name": body.customer_name or "",
+        "customer_mobile": body.customer_mobile or "",
         "captain_id": user["id"],
         "captain_name": user["name"],
         "notes": body.notes or "",
@@ -562,11 +665,24 @@ async def send_kot(bid: str, user: dict = Depends(require_roles("captain", "owne
 @api.put("/bills/{bid}/items/{item_id}/chef")
 async def set_chef_status(bid: str, item_id: str, body: ChefStatusIn, user: dict = Depends(require_roles("chef", "captain", "owner"))):
     bill = await fetch_bill(bid)
+    now = iso()
     for it in bill["items"]:
         if it["id"] == item_id:
+            prev = it.get("chef_status")
             it["chef_status"] = body.chef_status
-            it["chef_updated_at"] = iso()
+            it["chef_updated_at"] = now
             it["chef_updated_by"] = user["name"]
+            # Track specific timeline timestamps
+            if body.chef_status == "ready" and not it.get("ready_at"):
+                it["ready_at"] = now
+            if body.chef_status == "served" and not it.get("served_at"):
+                it["served_at"] = now
+                # ensure ready_at is also set
+                if not it.get("ready_at"):
+                    it["ready_at"] = now
+            # received_at = when sent to kitchen (from batch sent_at)
+            if it.get("sent_at") and not it.get("received_at"):
+                it["received_at"] = it["sent_at"]
             await save_bill(bill)
             return bill
     raise HTTPException(404, "Item not found")
@@ -819,10 +935,20 @@ async def seed_startup():
                                             "price": float(price), "cost": float(cost),
                                             "description": desc, "is_available": True, "created_at": iso()})
 
-    # Seed tables if empty
-    if await db.tables.count_documents({}) == 0:
-        for i in range(1, 13):
-            await db.tables.insert_one({"id": str(uuid.uuid4()), "name": f"T{i}", "seats": 4, "created_at": iso()})
+    # Seed tables: ensure T1..T16 exist with sort_order
+    existing_names = {t["name"] for t in await db.tables.find({}, {"name": 1, "_id": 0}).to_list(500)}
+    for i in range(1, 17):
+        nm = f"T{i}"
+        if nm not in existing_names:
+            await db.tables.insert_one({"id": str(uuid.uuid4()), "name": nm, "seats": 4,
+                                        "sort_order": i, "created_at": iso()})
+    # Backfill sort_order on tables missing it
+    async for t in db.tables.find({"sort_order": {"$exists": False}}, {"_id": 0}):
+        try:
+            n = int(t["name"].lstrip("T"))
+        except Exception:
+            n = 99
+        await db.tables.update_one({"id": t["id"]}, {"$set": {"sort_order": n}})
 
     # Seed inventory if empty
     if await db.inventory.count_documents({}) == 0:
