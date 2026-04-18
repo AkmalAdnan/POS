@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Minus, Trash2, Printer, Search, Send, RefreshCw, Pencil, ReceiptText, Wallet, Smartphone, CreditCard } from "lucide-react";
+import { ArrowLeft, Plus, Minus, Trash2, Printer, Search, Send, RefreshCw, Pencil, ReceiptText, Wallet, Smartphone, CreditCard, Check, X } from "lucide-react";
 
 const STATUS_COLOR = {
   pending: "bg-amber-100 text-amber-800 border-amber-200",
@@ -212,6 +212,37 @@ export default function CaptainBill() {
             <Button disabled={pending.length === 0} className="mt-3 w-full h-11 bg-brand-500 hover:bg-brand-600 text-white" onClick={() => setPreviewOpen(true)} data-testid="bill-preview-btn">
               <Send className="w-4 h-4 mr-2" /> Preview & send KOT
             </Button>
+
+            {/* Collect Payment — visible for captain under Preview & Send KOT */}
+            <div className="mt-3 border-t border-earth-border pt-3">
+              <div className="flex items-center justify-between">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-brand-500">Payment</div>
+                {paid ? (
+                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 uppercase tracking-widest text-[10px] inline-flex items-center gap-1" data-testid="bill-payment-status-badge">
+                    <Check className="w-3 h-3" /> Received · {bill.payment.method?.toUpperCase()}
+                  </Badge>
+                ) : (
+                  <Badge className="bg-red-100 text-red-800 border-red-200 uppercase tracking-widest text-[10px] inline-flex items-center gap-1" data-testid="bill-payment-status-badge">
+                    <X className="w-3 h-3" /> Pending
+                  </Badge>
+                )}
+              </div>
+              {paid ? (
+                <div className="text-xs text-brand-900/60 mt-2" data-testid="bill-payment-info">
+                  Collected by <b>{bill.payment.received_by_name}</b> <span className="uppercase tracking-widest text-[10px] text-brand-900/50">· {bill.payment.received_by_role || ""}</span>
+                  <div className="text-[10px]">{bill.payment.received_at ? new Date(bill.payment.received_at).toLocaleTimeString() : ""}</div>
+                </div>
+              ) : (
+                <Button
+                  className="mt-2 w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => { setPayMethod("cash"); setPayAmount(bill.total); setPayOpen(true); }}
+                  disabled={bill.total <= 0}
+                  data-testid="bill-collect-payment-btn"
+                >
+                  <Wallet className="w-4 h-4 mr-2" /> Collect payment
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Already sent batches */}
