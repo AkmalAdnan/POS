@@ -8,13 +8,20 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Minus, Trash2, Printer, Search, Send, RefreshCw, Pencil, ReceiptText } from "lucide-react";
+import { ArrowLeft, Plus, Minus, Trash2, Printer, Search, Send, RefreshCw, Pencil, ReceiptText, Wallet, Smartphone, CreditCard } from "lucide-react";
 
 const STATUS_COLOR = {
   pending: "bg-amber-100 text-amber-800 border-amber-200",
   ready: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  served: "bg-sky-100 text-sky-800 border-sky-200",
   cancelled: "bg-gray-100 text-gray-600 border-gray-200",
 };
+
+const PAY_METHODS = [
+  { id: "cash", label: "Cash", icon: Wallet },
+  { id: "upi", label: "UPI", icon: Smartphone },
+  { id: "card", label: "Card", icon: CreditCard },
+];
 
 export default function CaptainBill() {
   const { id } = useParams();
@@ -27,6 +34,9 @@ export default function CaptainBill() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [itemNotes, setItemNotes] = useState({});
   const [editing, setEditing] = useState(null); // {item, newMenuItemId, qty, notes}
+  const [payOpen, setPayOpen] = useState(false);
+  const [payMethod, setPayMethod] = useState("cash");
+  const [payAmount, setPayAmount] = useState(0);
 
   const load = async () => {
     const [b, m] = await Promise.all([api.get(`/bills/${id}`), api.get("/menu")]);
@@ -94,6 +104,14 @@ export default function CaptainBill() {
   };
 
   const paid = bill.payment?.status === "received";
+
+  const collectPayment = async () => {
+    try {
+      const { data } = await api.post(`/bills/${id}/payment`, { method: payMethod, amount: Number(payAmount) });
+      setBill(data); setPayOpen(false);
+      toast.success(`Payment received · ${payMethod.toUpperCase()}`);
+    } catch (e) { toast.error(e.response?.data?.detail || "Payment failed"); }
+  };
 
   return (
     <AppShell>
@@ -312,6 +330,37 @@ export default function CaptainBill() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
             <Button onClick={saveEdit} className="bg-brand-500 hover:bg-brand-600 text-white" data-testid="bill-edit-save-btn">Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Payment Dialog */}
+      <Dialog open={payOpen} onOpenChange={setPayOpen}>
+        <DialogContent data-testid="bill-pay-dialog" className="max-w-md">
+          <DialogHeader><DialogTitle className="font-heading">Collect payment · Bill #{bill.bill_number}</DialogTitle></DialogHeader>
+          <div>
+            <div className="text-sm text-brand-900/70">Table {bill.table_name} · {bill.customer_name || "Walk-in"}{bill.customer_mobile ? ` · ${bill.customer_mobile}` : ""}</div>
+            <div className="font-heading text-4xl text-brand-500 mt-2">{money(bill.total)}</div>
+            <div className="grid grid-cols-3 gap-2 mt-5">
+              {PAY_METHODS.map((m) => (
+                <button key={m.id} onClick={() => setPayMethod(m.id)} className={`rounded-xl border p-3 text-center transition-all ${payMethod === m.id ? "border-brand-500 bg-brand-50 text-brand-900" : "border-earth-border hover:border-brand-300"}`} data-testid={`bill-pay-method-${m.id}`}>
+                  <m.icon className="w-5 h-5 mx-auto" />
+                  <div className="mt-1 text-xs font-medium uppercase tracking-widest">{m.label}</div>
+                </button>
+              ))}
+            </div>
+            <div className="mt-4">
+              <label className="text-xs text-brand-900/60">Amount received</label>
+              <Input type="number" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="mt-1 h-11" data-testid="bill-pay-amount" />
+            </div>
+            <p className="text-[11px] text-brand-900/60 mt-3">
+              Marking as received will close this bill. It will move to the cashier's <b>Completed</b> tab instantly.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayOpen(false)}>Cancel</Button>
+            <Button onClick={collectPayment} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="bill-pay-confirm-btn">
+              Mark as received
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

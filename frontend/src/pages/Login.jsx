@@ -17,7 +17,6 @@ const QUICK = [
   { role: "Captain", email: "captain@spice.com", password: "captain123", testid: "quick-captain-btn" },
   { role: "Chef", email: "chef@spice.com", password: "chef123", testid: "quick-chef-btn" },
   { role: "Cashier", email: "cashier@spice.com", password: "cashier123", testid: "quick-cashier-btn" },
-  { role: "Customer", email: "guest@spice.com", password: "guest123", testid: "quick-customer-btn" },
 ];
 
 export default function Login() {
@@ -94,7 +93,7 @@ export default function Login() {
 
           <div className="mt-6">
             <div className="text-[11px] uppercase tracking-[0.22em] text-brand-500 mb-2">Demo accounts</div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {QUICK.map((q) => (
                 <Button key={q.role} variant="outline" size="sm" onClick={() => quick(q.email, q.password)} data-testid={q.testid}>
                   {q.role}

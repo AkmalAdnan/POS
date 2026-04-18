@@ -44,7 +44,7 @@ export default function Landing() {
             </Button>
           </div>
           <div className="mt-6 text-xs text-brand-900/60 font-mono">
-            Demo · owner@spice.com / owner123 · captain@spice.com / captain123 · chef@spice.com / chef123 · cashier@spice.com / cashier123 · guest@spice.com / guest123
+            Demo · owner@spice.com / owner123 · captain@spice.com / captain123 · chef@spice.com / chef123 · cashier@spice.com / cashier123
           </div>
         </div>
       </section>

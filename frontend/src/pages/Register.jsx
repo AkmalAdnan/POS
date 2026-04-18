@@ -13,7 +13,7 @@ const HOME_BY_ROLE = { owner: "/dashboard", captain: "/captain", chef: "/kds", c
 export default function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "customer" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", role: "captain" });
   const [loading, setLoading] = useState(false);
 
   const submit = async (e) => {
@@ -46,7 +46,6 @@ export default function Register() {
             <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
               <SelectTrigger className="mt-1 h-11" data-testid="register-role-select"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="customer">Customer — browse menu</SelectItem>
                 <SelectItem value="captain">Captain / Steward — take orders at tables</SelectItem>
                 <SelectItem value="chef">Chef — see kitchen display</SelectItem>
                 <SelectItem value="cashier">Cashier — collect payments</SelectItem>

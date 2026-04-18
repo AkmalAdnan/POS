@@ -689,7 +689,7 @@ async def set_chef_status(bid: str, item_id: str, body: ChefStatusIn, user: dict
 
 
 @api.post("/bills/{bid}/payment")
-async def record_payment(bid: str, body: PaymentIn, user: dict = Depends(require_roles("cashier", "owner"))):
+async def record_payment(bid: str, body: PaymentIn, user: dict = Depends(require_roles("cashier", "owner", "captain"))):
     bill = await fetch_bill(bid)
     bill["payment"] = {
         "status": "received", "method": body.method,
