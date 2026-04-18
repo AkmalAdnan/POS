@@ -66,8 +66,8 @@ export default function BillsView({ mode = "all" }) {
 
 function Table({ bills }) {
   return (
-    <div className="bg-white border border-earth-border rounded-2xl overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="bg-white border border-earth-border rounded-2xl overflow-hidden overflow-x-auto">
+      <table className="w-full text-sm min-w-[780px]">
         <thead className="bg-[#F9F6F0] text-[11px] uppercase tracking-[0.2em] text-brand-900/60">
           <tr>
             <th className="text-left px-4 py-3">#</th>

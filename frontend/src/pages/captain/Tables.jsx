@@ -69,18 +69,18 @@ export default function CaptainTables() {
               onClick={() => clickTable(t)}
               disabled={loading}
               data-testid={`table-card-${t.name}`}
-              className={`group rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 ${
+              className={`group rounded-xl sm:rounded-2xl border p-3 sm:p-4 text-left transition-all hover:-translate-y-0.5 ${
                 occ ? "bg-brand-500 border-brand-500 text-white" : "bg-white border-earth-border hover:border-brand-300"
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className={`text-[10px] uppercase tracking-[0.2em] ${occ ? "text-white/80" : "text-brand-500"}`}>{occ ? "Occupied" : "Available"}</span>
-                <Users className={`w-4 h-4 ${occ ? "text-white/80" : "text-brand-500"}`} />
+                <span className={`text-[9px] sm:text-[10px] uppercase tracking-[0.18em] sm:tracking-[0.2em] ${occ ? "text-white/80" : "text-brand-500"}`}>{occ ? "Occupied" : "Available"}</span>
+                <Users className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${occ ? "text-white/80" : "text-brand-500"}`} />
               </div>
-              <div className={`font-heading text-3xl mt-2 ${occ ? "text-white" : "text-brand-900"}`}>{t.name}</div>
-              <div className={`text-xs mt-0.5 ${occ ? "text-white/70" : "text-brand-900/50"}`}>{t.seats} seats</div>
+              <div className={`font-heading text-2xl sm:text-3xl mt-1 sm:mt-2 ${occ ? "text-white" : "text-brand-900"}`}>{t.name}</div>
+              <div className={`text-[10px] sm:text-xs ${occ ? "text-white/70" : "text-brand-900/50"}`}>{t.seats} seats</div>
               {occ && t.open_bill && (
-                <div className="mt-2 text-[11px] text-white/90">
+                <div className="mt-2 text-[10px] sm:text-[11px] text-white/90 truncate">
                   #{t.open_bill.bill_number} · ₹{Math.round(t.open_bill.total || 0)}
                 </div>
               )}

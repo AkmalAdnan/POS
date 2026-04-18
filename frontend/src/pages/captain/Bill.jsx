@@ -116,22 +116,22 @@ export default function CaptainBill() {
   return (
     <AppShell>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-        <div className="flex items-center gap-3">
+        <div className="flex items-start gap-3 min-w-0">
           <Button variant="outline" size="icon" onClick={() => navigate("/captain")} data-testid="bill-back-btn"><ArrowLeft className="w-4 h-4" /></Button>
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.25em] text-brand-500">Bill #{bill.bill_number} · Table {bill.table_name}</div>
-            <h1 className="font-heading text-3xl">Captain: {bill.captain_name}</h1>
-            <div className="text-xs text-brand-900/50">Opened {new Date(bill.created_at).toLocaleTimeString()} · {bill.kot_batches.length} KOT batch{bill.kot_batches.length === 1 ? "" : "es"}</div>
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-brand-500">Bill #{bill.bill_number} · Table {bill.table_name}</div>
+            <h1 className="font-heading text-xl sm:text-2xl md:text-3xl truncate">Captain: {bill.captain_name}</h1>
+            <div className="text-[11px] text-brand-900/50">Opened {new Date(bill.created_at).toLocaleTimeString()} · {bill.kot_batches.length} KOT batch{bill.kot_batches.length === 1 ? "" : "es"}</div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge className={paid ? "bg-emerald-100 text-emerald-800 border-emerald-200 uppercase tracking-widest" : "bg-red-100 text-red-800 border-red-200 uppercase tracking-widest"} data-testid="bill-payment-badge">
-            {paid ? `Payment received · ${bill.payment.method?.toUpperCase()}` : "Payment pending"}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge className={paid ? "bg-emerald-100 text-emerald-800 border-emerald-200 uppercase tracking-widest text-[10px]" : "bg-red-100 text-red-800 border-red-200 uppercase tracking-widest text-[10px]"} data-testid="bill-payment-badge">
+            {paid ? `Paid · ${bill.payment.method?.toUpperCase()}` : "Payment pending"}
           </Badge>
-          <Button variant="outline" onClick={() => window.open(`/print/bill/${id}`, "_blank")} data-testid="bill-print-bill-btn">
-            <ReceiptText className="w-4 h-4 mr-2" /> Print Bill
+          <Button variant="outline" size="sm" onClick={() => window.open(`/print/bill/${id}`, "_blank")} data-testid="bill-print-bill-btn">
+            <ReceiptText className="w-4 h-4 sm:mr-2" /><span className="hidden sm:inline">Print Bill</span>
           </Button>
-          <Button variant="outline" onClick={load} data-testid="bill-refresh-btn"><RefreshCw className="w-4 h-4" /></Button>
+          <Button variant="outline" size="icon" onClick={load} data-testid="bill-refresh-btn"><RefreshCw className="w-4 h-4" /></Button>
         </div>
       </div>
 
