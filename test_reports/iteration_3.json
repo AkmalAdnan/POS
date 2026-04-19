@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 3 testing of Dine-In vs Takeaway bill flow + PWA regression. Backend: 10/10 new tests passed (100%), including takeaway creation, dine-in creation, 400 on missing table_id, list filter by order_type, full pipelines for both types (add items → send KOT → chef ready/served → cashier payment), tables endpoint never attaches takeaway bills to tables, analytics summary+CSV regression, and cashier totals regression. Frontend: PWA manifest + service-worker served (200 OK), public/index.html references manifest and src/index.js registers SW in production, owner dashboard loads without blank screen, /orders/takeaway route works with takeaway filter showing TAKEAWAY-badged bills, and navigation links (Dashboard, Tables, Take-away, Staff, Menu, Inventory, Orders, Settings) all render correctly.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_takeaway_dinein.py",
+    "/app/test_reports/pytest/pytest_iteration4.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is ~1000 lines; consider splitting into routers (auth, bills, menu, analytics) for maintainability but not blocking.",
+    "create_bill returns an EXISTING open bill for the same table (dine-in) instead of 409/400; this is current design and frontend relies on it, keep as-is but document.",
+    "takeaway bills are never occupied on any table — verified via GET /api/tables attachment logic works correctly.",
+    "NewOrderDialog is wired only on captain/cashier screens; owner's /owner/tables is the admin (edit/delete) view — NewOrderDialog not reachable from owner UI directly. Not a bug per spec but worth confirming with PO if owners should also be able to create orders directly from Owner UI."
+  ],
+  "updated_files": ["/app/backend/tests/test_takeaway_dinein.py"],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "smoke-only, PWA + nav verified"},
+  "test_credentials": {
+    "owner": "owner@spice.com / owner123",
+    "captain": "captain@spice.com / captain123",
+    "chef": "chef@spice.com / chef123",
+    "cashier": "cashier@spice.com / cashier123"
+  },
+  "seed_data_creation": "Tests create a few TEST_ prefixed bills & tables and cancel/delete them where possible. Some closed takeaway test bills remain in DB (by design, they are closed/paid and represent realistic data).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend bill schema now includes `order_type` ('dine_in'|'takeaway'), takeaway bills have table_id=null and table_name='TAKEAWAY'. list_bills accepts `order_type` query param. PWA manifest.json & service-worker.js served from /, SW registers only in production build. Console shows benign 401s on /api/auth/me before login. Captain login is NOT geofence-blocked by default (geofence_enabled=false in seeded settings). test_takeaway_dinein.py is the regression harness for this iteration and should be run alongside test_iteration3_api.py.",
+  "rca_of_the_issue": "N/A - no bugs found."
+}
