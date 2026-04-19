@@ -50,7 +50,14 @@ export default function NewOrderDialog({ open, onOpenChange, defaultType = null 
       toast.success(`${type === "takeaway" ? "Takeaway" : `Dine-In · ${data.table_name}`} order opened`);
       onOpenChange(false);
       navigate(`/orders/bill/${data.id}`);
-    } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
+    } catch (e) {
+      if (e?.offlineQueued) {
+        toast.warning("You're offline — order queued. It will sync when you're back online.");
+        onOpenChange(false);
+      } else {
+        toast.error(e.response?.data?.detail || "Failed");
+      }
+    }
     finally { setBusy(false); }
   };
 

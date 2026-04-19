@@ -27,6 +27,12 @@ Restaurant POS web app that takes orders, prints KOT + bills (CGST/SGST), sends 
 - Chef: "served" status with ready_at/served_at timestamps; new Orders tab.
 - Cashier: In Progress / Completed / Cancelled / Today's Totals tabs; Close Day button exports CSV.
 
+### Iteration 4 (Feb 2026)
+- Dine-In vs Takeaway order flows: BillCreate accepts `order_type`, takeaway bills have `table_name="TAKEAWAY"` and no table_id; shared NewOrderDialog used by captain/cashier; GET /api/bills supports `order_type` filter; Owner nav exposes /orders/takeaway.
+- PWA: manifest.json, pwa-icon.svg + PNGs, service-worker.js (cache-first app shell, network-first API GETs, IndexedDB queue for offline POST/PUT/DELETE to /api/ with Background Sync tag `spice-flush` + `online` event flush).
+- Offline UX: new `useOnlineStatus` hook + sticky amber offline banner in AppShell; axios response interceptor converts SW's 202 `{queued:true}` into a typed rejection (`err.offlineQueued`) so NewOrderDialog shows a "queued" toast instead of crashing.
+- Testing: iteration_3.json passed 10/10 backend + frontend smoke (Dine-In/Takeaway + PWA verified).
+
 ## Backend endpoints (`/api`)
 - Auth: /auth/login, /register, /me, /logout
 - Menu: /menu CRUD (owner)

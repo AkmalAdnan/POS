@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { LogOut, UtensilsCrossed, Menu } from "lucide-react";
+import { LogOut, UtensilsCrossed, Menu, WifiOff } from "lucide-react";
 
 const linkCls = ({ isActive }) =>
   `px-3 py-2 rounded-md text-sm font-medium tracking-wide transition-colors ${
@@ -44,12 +45,22 @@ export default function AppShell({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const online = useOnlineStatus();
   const links = user ? LINKS[user.role] || [] : [];
 
   const doLogout = async () => { await logout(); navigate("/login"); };
 
   return (
     <div className="min-h-screen bg-[#F9F6F0]">
+      {!online && (
+        <div
+          data-testid="offline-banner"
+          className="no-print sticky top-0 z-50 w-full bg-amber-500 text-white text-sm font-medium px-4 py-2 flex items-center justify-center gap-2"
+        >
+          <WifiOff className="w-4 h-4" />
+          Offline — orders & updates will sync automatically when you're back online.
+        </div>
+      )}
       <header className="no-print sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-earth-border">
         <div className="max-w-[1400px] mx-auto px-4 md:px-6 h-14 md:h-16 flex items-center justify-between gap-2">
           <Link to="/" className="flex items-center gap-2 min-w-0" data-testid="nav-logo">
