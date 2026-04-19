@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { CreditCard, Wallet, Smartphone, ReceiptText, Printer, Download, Lock } from "lucide-react";
+import { CreditCard, Wallet, Smartphone, ReceiptText, Printer, Download, Lock, Plus } from "lucide-react";
+import NewOrderDialog from "@/components/NewOrderDialog";
 
 const METHODS = [
   { id: "cash", label: "Cash", icon: Wallet },
@@ -22,6 +23,7 @@ export default function CashierPayments() {
   const [active, setActive] = useState(null);
   const [method, setMethod] = useState("cash");
   const [amount, setAmount] = useState(0);
+  const [newOrderOpen, setNewOrderOpen] = useState(false);
 
   const load = async () => {
     const { data } = await api.get("/bills", { params: { date } });
@@ -62,9 +64,14 @@ export default function CashierPayments() {
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-6">
         <div>
           <h1 className="font-heading text-3xl md:text-4xl">Payments</h1>
-          <p className="text-sm text-brand-900/60 mt-1">Collect Cash, UPI or Card for open bills.</p>
+          <p className="text-sm text-brand-900/60 mt-1">Collect Cash, UPI or Card · or take a new order.</p>
         </div>
-        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-11 w-[170px]" data-testid="cashier-date-input" />
+        <div className="flex gap-2 items-center">
+          <Button onClick={() => setNewOrderOpen(true)} className="bg-brand-500 hover:bg-brand-600 text-white h-11" data-testid="cashier-new-order-btn">
+            <Plus className="w-4 h-4 mr-2" /> New Order
+          </Button>
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-11 w-[170px]" data-testid="cashier-date-input" />
+        </div>
       </div>
 
       <Tabs defaultValue="inprogress">
@@ -147,6 +154,7 @@ export default function CashierPayments() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <NewOrderDialog open={newOrderOpen} onOpenChange={setNewOrderOpen} />
     </AppShell>
   );
 }
@@ -170,7 +178,7 @@ function BillGrid({ bills, color, label, onAction, actionLabel = "Action" }) {
             <header className="flex items-center justify-between mt-1">
               <div>
                 <div className="font-heading text-2xl">#{b.bill_number}</div>
-                <div className="text-xs text-brand-900/50">Table {b.table_name} · {new Date(b.created_at).toLocaleTimeString()}</div>
+                <div className="text-xs text-brand-900/50">{b.order_type === "takeaway" ? "🥡 TAKEAWAY" : `Table ${b.table_name}`} · {new Date(b.created_at).toLocaleTimeString()}</div>
                 {b.customer_name && <div className="text-[11px] text-brand-900/60 mt-0.5">{b.customer_name}{b.customer_mobile ? ` · ${b.customer_mobile}` : ""}</div>}
               </div>
               <div className="text-right">

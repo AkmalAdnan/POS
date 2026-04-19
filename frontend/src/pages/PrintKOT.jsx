@@ -50,6 +50,9 @@ export default function PrintKOT() {
               <div className="text-[10px] tracking-[0.3em]">KITCHEN ORDER TICKET</div>
               <div className="mt-1 font-heading text-lg">{s.restaurant_name}</div>
               <div className="text-xs mt-1 font-bold tracking-[0.2em] uppercase">{dept}</div>
+              <div className={`mt-2 inline-block px-3 py-1 text-[12px] font-bold tracking-[0.25em] border-2 border-black ${bill.order_type === "takeaway" ? "bg-black text-white" : ""}`}>
+                {bill.order_type === "takeaway" ? "🥡 TAKEAWAY" : `DINE-IN · ${bill.table_name}`}
+              </div>
             </div>
             <hr className="my-3 border-dashed border-black/40" />
             <div className="flex justify-between text-xs">
@@ -57,9 +60,12 @@ export default function PrintKOT() {
               <span>{new Date().toLocaleTimeString()}</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span>Table: {bill.table_name}</span>
+              <span>{bill.order_type === "takeaway" ? "Customer:" : "Table:"} {bill.order_type === "takeaway" ? (bill.customer_name || "Walk-in") : bill.table_name}</span>
               <span>Captain: {bill.captain_name}</span>
             </div>
+            {bill.order_type === "takeaway" && bill.customer_mobile && (
+              <div className="text-xs">Mob: {bill.customer_mobile}</div>
+            )}
             <hr className="my-3 border-dashed border-black/40" />
             <table className="w-full text-sm">
               <thead><tr className="text-left"><th className="pb-2">Qty</th><th className="pb-2">Item</th></tr></thead>

@@ -71,6 +71,9 @@ function App() {
           <Route path="/captain/all" element={<Guarded roles={["captain", "owner"]}><BillsView mode="all" /></Guarded>} />
           <Route path="/captain/closed" element={<Guarded roles={["captain", "owner"]}><BillsView mode="closed" /></Guarded>} />
 
+          {/* Shared bill page (works for captain + cashier + owner) */}
+          <Route path="/orders/bill/:id" element={<Guarded roles={["captain", "cashier", "owner"]}><CaptainBill /></Guarded>} />
+
           {/* Chef */}
           <Route path="/kds" element={<Guarded roles={["chef", "captain", "owner"]}><ChefKDS /></Guarded>} />
 
@@ -79,6 +82,7 @@ function App() {
 
           {/* Shared Orders */}
           <Route path="/orders" element={<ProtectedRoute><BillsView mode="all" /></ProtectedRoute>} />
+          <Route path="/orders/takeaway" element={<ProtectedRoute><BillsView mode="takeaway" /></ProtectedRoute>} />
           <Route path="/my-orders" element={<ProtectedRoute><BillsView mode="all" /></ProtectedRoute>} />
 
           {/* Customer */}

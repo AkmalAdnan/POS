@@ -33,9 +33,10 @@ export default function BillsView({ mode = "all" }) {
   const running = bills.filter((b) => b.status === "open");
   const closed = bills.filter((b) => b.status === "closed");
   const cancelled = bills.filter((b) => b.status === "cancelled");
+  const takeaway = bills.filter((b) => b.order_type === "takeaway");
 
-  const defaultTab = mode === "running" ? "running" : mode === "closed" ? "closed" : "all";
-  const heading = mode === "running" ? "Running Orders" : mode === "closed" ? "Closed Orders" : "All Orders";
+  const defaultTab = mode === "running" ? "running" : mode === "closed" ? "closed" : mode === "takeaway" ? "takeaway" : "all";
+  const heading = mode === "running" ? "Running Orders" : mode === "closed" ? "Closed Orders" : mode === "takeaway" ? "Take-away Orders" : "All Orders";
 
   return (
     <AppShell>
@@ -48,13 +49,14 @@ export default function BillsView({ mode = "all" }) {
       </div>
 
       <Tabs defaultValue={defaultTab}>
-        <TabsList className="bg-white border border-earth-border p-1 rounded-xl h-auto">
+        <TabsList className="bg-white border border-earth-border p-1 rounded-xl h-auto flex flex-wrap gap-1">
           <TabsTrigger value="running" className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid="bills-tab-running">Running ({running.length})</TabsTrigger>
           <TabsTrigger value="closed" className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid="bills-tab-closed">Closed ({closed.length})</TabsTrigger>
           <TabsTrigger value="cancelled" className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid="bills-tab-cancelled">Cancelled ({cancelled.length})</TabsTrigger>
+          <TabsTrigger value="takeaway" className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid="bills-tab-takeaway">Take-away ({takeaway.length})</TabsTrigger>
           <TabsTrigger value="all" className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid="bills-tab-all">All ({bills.length})</TabsTrigger>
         </TabsList>
-        {[{ key: "running", list: running }, { key: "closed", list: closed }, { key: "cancelled", list: cancelled }, { key: "all", list: bills }].map((grp) => (
+        {[{ key: "running", list: running }, { key: "closed", list: closed }, { key: "cancelled", list: cancelled }, { key: "takeaway", list: takeaway }, { key: "all", list: bills }].map((grp) => (
           <TabsContent key={grp.key} value={grp.key} className="mt-4">
             <Table bills={grp.list} />
           </TabsContent>
@@ -72,7 +74,7 @@ function Table({ bills }) {
           <tr>
             <th className="text-left px-4 py-3">#</th>
             <th className="text-left px-4 py-3">Time</th>
-            <th className="text-left px-4 py-3">Table</th>
+            <th className="text-left px-4 py-3">Table / Type</th>
             <th className="text-left px-4 py-3">Customer</th>
             <th className="text-left px-4 py-3">Items</th>
             <th className="text-left px-4 py-3">Captain</th>
@@ -92,7 +94,13 @@ function Table({ bills }) {
               <tr key={b.id} className="border-t border-earth-border" data-testid={`bills-row-${b.id}`}>
                 <td className="px-4 py-3 font-semibold">#{b.bill_number}</td>
                 <td className="px-4 py-3 text-brand-900/70">{new Date(b.created_at).toLocaleTimeString()}</td>
-                <td className="px-4 py-3">{b.table_name || "—"}</td>
+                <td className="px-4 py-3">
+                  {b.order_type === "takeaway" ? (
+                    <span className="inline-block px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200 text-[10px] uppercase tracking-widest">🥡 Takeaway</span>
+                  ) : (
+                    b.table_name || "—"
+                  )}
+                </td>
                 <td className="px-4 py-3 text-brand-900/70">
                   {b.customer_name || "—"}
                   {b.customer_mobile && <div className="text-[10px] text-brand-900/40">{b.customer_mobile}</div>}

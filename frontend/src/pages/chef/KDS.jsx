@@ -42,15 +42,17 @@ export default function ChefKDS() {
     } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
   };
 
-  // Group by kot batch, filter by department
+  // Group by kot batch, filter by department/take-away
   const cards = useMemo(() => {
     const list = [];
     for (const b of bills) {
       if (b.status === "cancelled") continue;
+      // Take-away filter: only takeaway bills
+      if (dept === "Take-away" && b.order_type !== "takeaway") continue;
       const sentItems = (b.items || []).filter((i) => i.sent_to_kitchen);
       const batches = {};
       sentItems.forEach((i) => {
-        if (dept !== "All" && i.department !== dept) return;
+        if (dept !== "All" && dept !== "Take-away" && i.department !== dept) return;
         (batches[i.kot_batch] = batches[i.kot_batch] || []).push(i);
       });
       Object.entries(batches).forEach(([batchNum, items]) => {
@@ -59,6 +61,7 @@ export default function ChefKDS() {
         list.push({
           key: `${b.id}-${batchNum}`,
           billId: b.id, bill_number: b.bill_number, table_name: b.table_name,
+          order_type: b.order_type,
           batch: Number(batchNum), sent_at: batchMeta?.sent_at || b.created_at,
           items, pending: pendingCount,
           captain_name: b.captain_name,
@@ -116,7 +119,7 @@ export default function ChefKDS() {
                   <header className="flex items-center justify-between">
                     <div>
                       <div className="font-heading text-2xl">#{c.bill_number} · KOT {c.batch}</div>
-                      <div className="text-xs text-brand-900/50">Table {c.table_name} · Captain {c.captain_name}</div>
+                      <div className="text-xs text-brand-900/50">{c.order_type === "takeaway" ? "🥡 TAKEAWAY" : `Table ${c.table_name}`} · Captain {c.captain_name}</div>
                       <div className="text-[11px] text-brand-900/50">Received {fmtTime(c.sent_at)}</div>
                     </div>
                     <Badge className="uppercase tracking-widest text-[10px] border bg-brand-50 text-brand-900">{c.pending} pending</Badge>

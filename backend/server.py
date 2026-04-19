@@ -108,10 +108,11 @@ class MenuItemIn(BaseModel):
     is_available: bool = True
 
 class BillCreate(BaseModel):
-    table_id: str
+    table_id: Optional[str] = None
     customer_name: Optional[str] = ""
     customer_mobile: Optional[str] = ""
     notes: Optional[str] = ""
+    order_type: Literal["dine_in", "takeaway"] = "dine_in"
 
 class AddItemsIn(BaseModel):
     items: List[dict]  # [{menu_item_id, quantity, notes}]
@@ -502,25 +503,35 @@ async def save_bill(bill: dict):
 
 
 @api.post("/bills")
-async def create_bill(body: BillCreate, user: dict = Depends(require_roles("captain", "owner"))):
-    # Enforce: one open bill per table
-    existing = await db.bills.find_one({"table_id": body.table_id, "status": "open"})
-    if existing:
-        existing.pop("_id", None)
-        return existing
-    table = await db.tables.find_one({"id": body.table_id}, {"_id": 0})
-    if not table:
-        raise HTTPException(404, "Table not found")
+async def create_bill(body: BillCreate, user: dict = Depends(require_roles("captain", "cashier", "owner"))):
+    is_takeaway = body.order_type == "takeaway"
+    if not is_takeaway:
+        if not body.table_id:
+            raise HTTPException(400, "Table required for dine-in")
+        existing = await db.bills.find_one({"table_id": body.table_id, "status": "open"})
+        if existing:
+            existing.pop("_id", None)
+            return existing
+        table = await db.tables.find_one({"id": body.table_id}, {"_id": 0})
+        if not table:
+            raise HTTPException(404, "Table not found")
+        table_name = table["name"]
+        table_id = body.table_id
+    else:
+        table_name = "TAKEAWAY"
+        table_id = None
     s = await settings_doc()
     bill = {
         "id": str(uuid.uuid4()),
         "bill_number": await next_bill_number(),
-        "table_id": body.table_id,
-        "table_name": table["name"],
+        "table_id": table_id,
+        "table_name": table_name,
+        "order_type": body.order_type,
         "customer_name": body.customer_name or "",
         "customer_mobile": body.customer_mobile or "",
         "captain_id": user["id"],
         "captain_name": user["name"],
+        "captain_role": user["role"],
         "notes": body.notes or "",
         "status": "open",
         "items": [],
@@ -544,6 +555,7 @@ async def list_bills(
     date: Optional[str] = None,
     payment_status: Optional[str] = None,
     table_id: Optional[str] = None,
+    order_type: Optional[str] = None,
     user: dict = Depends(get_current_user),
 ):
     q = {}
@@ -551,6 +563,7 @@ async def list_bills(
     if date: q["created_at"] = {"$gte": f"{date}T00:00:00", "$lt": f"{date}T23:59:59.999999+00:00"}
     if table_id: q["table_id"] = table_id
     if payment_status: q["payment.status"] = payment_status
+    if order_type: q["order_type"] = order_type
     if user["role"] == "customer":
         q["captain_id"] = user["id"]
     return await db.bills.find(q, {"_id": 0}).sort("created_at", -1).to_list(5000)

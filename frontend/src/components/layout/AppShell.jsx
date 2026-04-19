@@ -23,6 +23,7 @@ const LINKS = {
     { to: "/menu", label: "Menu" },
     { to: "/inventory", label: "Inventory" },
     { to: "/orders", label: "Orders" },
+    { to: "/orders/takeaway", label: "Take-away" },
     { to: "/settings", label: "Settings" },
   ],
   captain: [

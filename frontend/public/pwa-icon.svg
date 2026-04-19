@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#C55E38"/>
+  <g fill="#F9F6F0" transform="translate(116 116) scale(11.25)">
+    <!-- simplified utensils-crossed icon -->
+    <path d="M22.4 10.88L11.61 21.67L8.94 19l10.79-10.79c.38-.38 1.04-.38 1.42 0l1.25 1.25c.38.39.38 1.04 0 1.42z" stroke="#F9F6F0" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M5.45 5.45L2 8.9l7.07 7.07L12 12.86" stroke="#F9F6F0" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M2 21l8-8" stroke="#F9F6F0" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+  </g>
+  <text x="256" y="470" font-family="system-ui, sans-serif" font-size="40" font-weight="700" fill="#F9F6F0" text-anchor="middle">SPICE</text>
+</svg>

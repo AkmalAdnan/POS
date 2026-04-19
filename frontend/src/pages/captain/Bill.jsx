@@ -103,6 +103,12 @@ export default function CaptainBill() {
     } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
   };
 
+  const onBack = () => {
+    // back to whichever role the user came from
+    if (window.history.length > 1) navigate(-1);
+    else navigate("/");
+  };
+
   const paid = bill.payment?.status === "received";
 
   const collectPayment = async () => {
@@ -117,9 +123,11 @@ export default function CaptainBill() {
     <AppShell>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div className="flex items-start gap-3 min-w-0">
-          <Button variant="outline" size="icon" onClick={() => navigate("/captain")} data-testid="bill-back-btn"><ArrowLeft className="w-4 h-4" /></Button>
+          <Button variant="outline" size="icon" onClick={onBack} data-testid="bill-back-btn"><ArrowLeft className="w-4 h-4" /></Button>
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-brand-500">Bill #{bill.bill_number} · Table {bill.table_name}</div>
+            <div className="text-[10px] uppercase tracking-[0.22em] text-brand-500">
+              Bill #{bill.bill_number} · {bill.order_type === "takeaway" ? "🥡 Take-away" : `Table ${bill.table_name}`}
+            </div>
             <h1 className="font-heading text-xl sm:text-2xl md:text-3xl truncate">Captain: {bill.captain_name}</h1>
             <div className="text-[11px] text-brand-900/50">Opened {new Date(bill.created_at).toLocaleTimeString()} · {bill.kot_batches.length} KOT batch{bill.kot_batches.length === 1 ? "" : "es"}</div>
           </div>

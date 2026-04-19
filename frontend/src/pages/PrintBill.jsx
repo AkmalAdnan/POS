@@ -36,6 +36,9 @@ export default function PrintBill() {
           <div className="text-[11px]">Ph: {s.phone}</div>
           {s.gstin && <div className="text-[11px]">GSTIN: {s.gstin}</div>}
           <div className="text-[10px] tracking-[0.25em] mt-1">TAX INVOICE</div>
+          <div className={`mt-2 inline-block px-3 py-1 text-[12px] font-bold tracking-[0.25em] border-2 border-black ${bill.order_type === "takeaway" ? "bg-black text-white" : ""}`}>
+            {bill.order_type === "takeaway" ? "🥡 TAKEAWAY" : `DINE-IN · ${bill.table_name}`}
+          </div>
         </div>
         <hr className="my-3 border-dashed border-black/40" />
         <div className="flex justify-between text-xs">

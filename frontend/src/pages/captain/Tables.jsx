@@ -6,13 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Users, Circle } from "lucide-react";
+import { Users, Circle, Plus } from "lucide-react";
 import { toast } from "sonner";
+import NewOrderDialog from "@/components/NewOrderDialog";
 
 export default function CaptainTables() {
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState(null);  // { table } or null
+  const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [customer, setCustomer] = useState({ customer_name: "", customer_mobile: "", notes: "" });
   const navigate = useNavigate();
 
@@ -120,6 +122,7 @@ export default function CaptainTables() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <NewOrderDialog open={newOrderOpen} onOpenChange={setNewOrderOpen} />
     </AppShell>
   );
 }
