@@ -41,6 +41,12 @@ Restaurant POS web app that takes orders, prints KOT + bills (CGST/SGST), sends 
   - `seed.py` — startup seeding (users, menu, tables, inventory).
 - All `/api/*` paths unchanged; 10/10 regression tests (`test_takeaway_dinein.py`) pass post-refactor.
 
+### Iteration 6 — Role workflow upgrades (Feb 2026)
+- **Captain/Cashier nav**: new `NewOrderButton` (shadcn `DropdownMenu`) — prominent "New Order ▾" in the top nav with Dine-In / Take-Away picks that open `NewOrderDialog` with `defaultType` pre-filled (skips the type-picker step). Menu screen in the subsequent bill page already supports All-preselected + cross-category search + preview/confirm; KOT print already labels Dine-In/Take-away.
+- **Cashier permissions**: granted on `POST /bills/{id}/items`, `PUT /bills/{id}/items/{item_id}`, `DELETE /bills/{id}/items/{item_id}`, `POST /bills/{id}/send-kot`, `POST /bills/{id}/cancel`. Cashier can now place/manage orders end-to-end (verified: no more 403 Insufficient permissions).
+- **Chef KDS**: new top-level **"🥡 Take-away"** tab alongside Live KDS and Orders. Reusable `KDSCardGrid` component renders all takeaway KOT batches with the same ready/cancel/serve controls as Live KDS.
+- **Captain Bill dialog labels**: preview + payment dialogs show "🥡 Take-away" instead of "Table TAKEAWAY" when the bill is a parcel.
+
 ## Backend endpoints (`/api`)
 - Auth: /auth/login, /register, /me, /logout
 - Menu: /menu CRUD (owner)

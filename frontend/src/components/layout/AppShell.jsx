@@ -4,6 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import NewOrderButton from "@/components/NewOrderButton";
 import { LogOut, UtensilsCrossed, Menu, WifiOff } from "lucide-react";
 
 const linkCls = ({ isActive }) =>
@@ -47,6 +48,7 @@ export default function AppShell({ children }) {
   const [open, setOpen] = useState(false);
   const online = useOnlineStatus();
   const links = user ? LINKS[user.role] || [] : [];
+  const showNewOrder = user && (user.role === "captain" || user.role === "cashier");
 
   const doLogout = async () => { await logout(); navigate("/login"); };
 
@@ -80,6 +82,7 @@ export default function AppShell({ children }) {
                 {l.label}
               </NavLink>
             ))}
+            {showNewOrder && <div className="ml-2"><NewOrderButton /></div>}
           </nav>
 
           <div className="flex items-center gap-2">
@@ -113,6 +116,11 @@ export default function AppShell({ children }) {
                     <div className="text-[10px] uppercase tracking-[0.22em] text-brand-500 mt-0.5">{user.role}</div>
                   </div>
                   <nav className="p-3 space-y-1">
+                    {showNewOrder && (
+                      <div className="mb-2">
+                        <NewOrderButton variant="mobile" onNavigate={() => setOpen(false)} />
+                      </div>
+                    )}
                     {links.map((l) => (
                       <NavLink
                         key={l.to}

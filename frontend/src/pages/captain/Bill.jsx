@@ -310,7 +310,9 @@ export default function CaptainBill() {
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent data-testid="bill-preview-dialog" className="max-w-lg">
           <DialogHeader><DialogTitle className="font-heading">Preview KOT before sending</DialogTitle></DialogHeader>
-          <div className="text-xs text-brand-900/60 mb-2">Table {bill.table_name} · {new Date().toLocaleTimeString()}</div>
+          <div className="text-xs text-brand-900/60 mb-2">
+            {bill.order_type === "takeaway" ? "🥡 Take-away" : `Table ${bill.table_name}`} · {new Date().toLocaleTimeString()}
+          </div>
           <ul className="divide-y divide-earth-border max-h-[50vh] overflow-auto">
             {pending.map((it) => (
               <li key={it.id} className="py-2">
@@ -377,7 +379,7 @@ export default function CaptainBill() {
         <DialogContent data-testid="bill-pay-dialog" className="max-w-md">
           <DialogHeader><DialogTitle className="font-heading">Collect payment · Bill #{bill.bill_number}</DialogTitle></DialogHeader>
           <div>
-            <div className="text-sm text-brand-900/70">Table {bill.table_name} · {bill.customer_name || "Walk-in"}{bill.customer_mobile ? ` · ${bill.customer_mobile}` : ""}</div>
+            <div className="text-sm text-brand-900/70">{bill.order_type === "takeaway" ? "🥡 Take-away" : `Table ${bill.table_name}`} · {bill.customer_name || "Walk-in"}{bill.customer_mobile ? ` · ${bill.customer_mobile}` : ""}</div>
             <div className="font-heading text-4xl text-brand-500 mt-2">{money(bill.total)}</div>
             <div className="grid grid-cols-3 gap-2 mt-5">
               {PAY_METHODS.map((m) => (

@@ -120,7 +120,7 @@ async def get_bill(bid: str, user: dict = Depends(get_current_user)):
 
 
 @router.post("/bills/{bid}/items")
-async def add_items(bid: str, body: AddItemsIn, user: dict = Depends(require_roles("captain", "owner"))):
+async def add_items(bid: str, body: AddItemsIn, user: dict = Depends(require_roles("captain", "cashier", "owner"))):
     bill = await fetch_bill(bid)
     if bill["status"] != "open":
         raise HTTPException(400, "Bill is not open")
@@ -149,7 +149,7 @@ async def add_items(bid: str, body: AddItemsIn, user: dict = Depends(require_rol
 
 
 @router.put("/bills/{bid}/items/{item_id}")
-async def edit_item(bid: str, item_id: str, body: EditItemIn, user: dict = Depends(require_roles("captain", "owner"))):
+async def edit_item(bid: str, item_id: str, body: EditItemIn, user: dict = Depends(require_roles("captain", "cashier", "owner"))):
     bill = await fetch_bill(bid)
     if bill["status"] != "open":
         raise HTTPException(400, "Bill is not open")
@@ -181,7 +181,7 @@ async def edit_item(bid: str, item_id: str, body: EditItemIn, user: dict = Depen
 
 
 @router.delete("/bills/{bid}/items/{item_id}")
-async def delete_item(bid: str, item_id: str, user: dict = Depends(require_roles("captain", "owner"))):
+async def delete_item(bid: str, item_id: str, user: dict = Depends(require_roles("captain", "cashier", "owner"))):
     bill = await fetch_bill(bid)
     target = next((i for i in bill["items"] if i["id"] == item_id), None)
     if not target:
@@ -197,7 +197,7 @@ async def delete_item(bid: str, item_id: str, user: dict = Depends(require_roles
 
 
 @router.post("/bills/{bid}/send-kot")
-async def send_kot(bid: str, user: dict = Depends(require_roles("captain", "owner"))):
+async def send_kot(bid: str, user: dict = Depends(require_roles("captain", "cashier", "owner"))):
     bill = await fetch_bill(bid)
     pending = [i for i in bill["items"] if not i.get("sent_to_kitchen")]
     if not pending:
@@ -262,7 +262,7 @@ async def record_payment(
 
 
 @router.post("/bills/{bid}/cancel")
-async def cancel_bill(bid: str, user: dict = Depends(require_roles("owner", "captain"))):
+async def cancel_bill(bid: str, user: dict = Depends(require_roles("owner", "captain", "cashier"))):
     bill = await fetch_bill(bid)
     bill["status"] = "cancelled"
     await save_bill(bill)

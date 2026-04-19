@@ -42,17 +42,18 @@ export default function ChefKDS() {
     } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
   };
 
-  // Group by kot batch, filter by department/take-away
-  const cards = useMemo(() => {
+  // Group by kot batch, filter by department/take-away.
+  // `orderTypeFilter` allows callers (e.g. the Take-away tab) to restrict to takeaway bills only.
+  const buildCards = (orderTypeFilter = null) => {
     const list = [];
     for (const b of bills) {
       if (b.status === "cancelled") continue;
-      // Take-away filter: only takeaway bills
-      if (dept === "Take-away" && b.order_type !== "takeaway") continue;
+      if (orderTypeFilter && b.order_type !== orderTypeFilter) continue;
       const sentItems = (b.items || []).filter((i) => i.sent_to_kitchen);
       const batches = {};
       sentItems.forEach((i) => {
-        if (dept !== "All" && dept !== "Take-away" && i.department !== dept) return;
+        // dept filter only applies when we're NOT in takeaway-only mode
+        if (!orderTypeFilter && dept !== "All" && i.department !== dept) return;
         (batches[i.kot_batch] = batches[i.kot_batch] || []).push(i);
       });
       Object.entries(batches).forEach(([batchNum, items]) => {
@@ -71,7 +72,10 @@ export default function ChefKDS() {
     return list
       .filter((c) => c.items.some((i) => i.chef_status !== "cancelled"))
       .sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at));
-  }, [bills, dept]);
+  };
+
+  const cards = useMemo(() => buildCards(null), [bills, dept]); // eslint-disable-line react-hooks/exhaustive-deps
+  const takeawayCards = useMemo(() => buildCards("takeaway"), [bills]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Bills list for Orders tab
   const running = bills.filter((b) => b.status === "open");
@@ -88,6 +92,9 @@ export default function ChefKDS() {
       <Tabs defaultValue="live" className="mt-5">
         <TabsList className="bg-white border border-earth-border p-1 rounded-xl h-auto">
           <TabsTrigger value="live" className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid="chef-tab-live">Live KDS</TabsTrigger>
+          <TabsTrigger value="takeaway" className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid="chef-tab-takeaway">
+            🥡 Take-away ({takeawayCards.length})
+          </TabsTrigger>
           <TabsTrigger value="orders" className="h-11 px-4 data-[state=active]:bg-brand-500 data-[state=active]:text-white rounded-lg" data-testid="chef-tab-orders">Orders</TabsTrigger>
         </TabsList>
 
@@ -106,58 +113,22 @@ export default function ChefKDS() {
             ))}
           </div>
 
-          {cards.length === 0 ? (
-            <div className="bg-white border border-earth-border rounded-2xl p-14 text-center">
-              <Utensils className="w-8 h-8 text-brand-500 mx-auto" />
-              <div className="font-heading text-xl text-brand-900 mt-3">All caught up!</div>
-              <p className="text-sm text-brand-900/60 mt-1">New orders will appear here as captains send KOTs.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {cards.map((c) => (
-                <article key={c.key} className="bg-white border border-earth-border rounded-2xl p-5 animate-slide-up" data-testid={`kds-card-${c.key}`}>
-                  <header className="flex items-center justify-between">
-                    <div>
-                      <div className="font-heading text-2xl">#{c.bill_number} · KOT {c.batch}</div>
-                      <div className="text-xs text-brand-900/50">{c.order_type === "takeaway" ? "🥡 TAKEAWAY" : `Table ${c.table_name}`} · Captain {c.captain_name}</div>
-                      <div className="text-[11px] text-brand-900/50">Received {fmtTime(c.sent_at)}</div>
-                    </div>
-                    <Badge className="uppercase tracking-widest text-[10px] border bg-brand-50 text-brand-900">{c.pending} pending</Badge>
-                  </header>
-                  <ul className="mt-4 divide-y divide-earth-border">
-                    {c.items.map((it) => (
-                      <li key={it.id} className="py-3 flex items-start gap-3" data-testid={`kds-item-${it.id}`}>
-                        <div className="flex-1">
-                          <div className="text-sm"><b>{it.quantity}×</b> {it.name}</div>
-                          <div className="text-[11px] uppercase tracking-widest text-brand-500 mt-0.5">{it.department}</div>
-                          {it.notes && <div className="text-xs text-brand-900/60 italic mt-0.5">Note: {it.notes}</div>}
-                          <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-brand-900/50">
-                            <span>recv {fmtTime(it.received_at || it.sent_at)}</span>
-                            {it.ready_at && <span>ready {fmtTime(it.ready_at)}</span>}
-                            {it.served_at && <span>served {fmtTime(it.served_at)}</span>}
-                          </div>
-                          <Badge className={`mt-1 text-[9px] uppercase ${ST_COLOR[it.chef_status]}`}>{it.chef_status}</Badge>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <div className="flex gap-1">
-                            <Button size="icon" variant={it.chef_status === "ready" ? "default" : "outline"} className={it.chef_status === "ready" ? "bg-emerald-500 hover:bg-emerald-600 text-white h-8 w-8" : "h-8 w-8"} title="Mark ready" onClick={() => setChef(c.billId, it.id, it.chef_status === "ready" ? "pending" : "ready")} data-testid={`kds-tick-${it.id}`}>
-                              <Check className="w-4 h-4" />
-                            </Button>
-                            <Button size="icon" variant={it.chef_status === "cancelled" ? "default" : "outline"} className={it.chef_status === "cancelled" ? "bg-red-500 hover:bg-red-600 text-white h-8 w-8" : "h-8 w-8"} title="Cancel" onClick={() => setChef(c.billId, it.id, it.chef_status === "cancelled" ? "pending" : "cancelled")} data-testid={`kds-cross-${it.id}`}>
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </div>
-                          <Button size="sm" variant={it.chef_status === "served" ? "default" : "outline"} className={it.chef_status === "served" ? "bg-sky-600 hover:bg-sky-700 text-white h-8 text-[11px]" : "h-8 text-[11px]"} title="Mark served" onClick={() => setChef(c.billId, it.id, "served")} data-testid={`kds-serve-${it.id}`}>
-                            <HandPlatter className="w-3.5 h-3.5 mr-1" /> Serve
-                          </Button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </article>
-              ))}
-            </div>
-          )}
+          <KDSCardGrid
+            cards={cards}
+            setChef={setChef}
+            emptyTitle="All caught up!"
+            emptyHint="New orders will appear here as captains send KOTs."
+          />
+        </TabsContent>
+
+        {/* TAKE-AWAY */}
+        <TabsContent value="takeaway" className="mt-4" data-testid="chef-takeaway-panel">
+          <KDSCardGrid
+            cards={takeawayCards}
+            setChef={setChef}
+            emptyTitle="No take-away orders yet"
+            emptyHint="Captain/Cashier take-away KOTs land here the moment they're sent."
+          />
         </TabsContent>
 
         {/* ORDERS TAB */}
@@ -204,5 +175,63 @@ export default function ChefKDS() {
         </TabsContent>
       </Tabs>
     </AppShell>
+  );
+}
+
+function KDSCardGrid({ cards, setChef, emptyTitle, emptyHint }) {
+  if (cards.length === 0) {
+    return (
+      <div className="bg-white border border-earth-border rounded-2xl p-14 text-center">
+        <Utensils className="w-8 h-8 text-brand-500 mx-auto" />
+        <div className="font-heading text-xl text-brand-900 mt-3">{emptyTitle}</div>
+        <p className="text-sm text-brand-900/60 mt-1">{emptyHint}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {cards.map((c) => (
+        <article key={c.key} className="bg-white border border-earth-border rounded-2xl p-5 animate-slide-up" data-testid={`kds-card-${c.key}`}>
+          <header className="flex items-center justify-between">
+            <div>
+              <div className="font-heading text-2xl">#{c.bill_number} · KOT {c.batch}</div>
+              <div className="text-xs text-brand-900/50">{c.order_type === "takeaway" ? "🥡 TAKEAWAY" : `Table ${c.table_name}`} · Captain {c.captain_name}</div>
+              <div className="text-[11px] text-brand-900/50">Received {fmtTime(c.sent_at)}</div>
+            </div>
+            <Badge className="uppercase tracking-widest text-[10px] border bg-brand-50 text-brand-900">{c.pending} pending</Badge>
+          </header>
+          <ul className="mt-4 divide-y divide-earth-border">
+            {c.items.map((it) => (
+              <li key={it.id} className="py-3 flex items-start gap-3" data-testid={`kds-item-${it.id}`}>
+                <div className="flex-1">
+                  <div className="text-sm"><b>{it.quantity}×</b> {it.name}</div>
+                  <div className="text-[11px] uppercase tracking-widest text-brand-500 mt-0.5">{it.department}</div>
+                  {it.notes && <div className="text-xs text-brand-900/60 italic mt-0.5">Note: {it.notes}</div>}
+                  <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-brand-900/50">
+                    <span>recv {fmtTime(it.received_at || it.sent_at)}</span>
+                    {it.ready_at && <span>ready {fmtTime(it.ready_at)}</span>}
+                    {it.served_at && <span>served {fmtTime(it.served_at)}</span>}
+                  </div>
+                  <Badge className={`mt-1 text-[9px] uppercase ${ST_COLOR[it.chef_status]}`}>{it.chef_status}</Badge>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex gap-1">
+                    <Button size="icon" variant={it.chef_status === "ready" ? "default" : "outline"} className={it.chef_status === "ready" ? "bg-emerald-500 hover:bg-emerald-600 text-white h-8 w-8" : "h-8 w-8"} title="Mark ready" onClick={() => setChef(c.billId, it.id, it.chef_status === "ready" ? "pending" : "ready")} data-testid={`kds-tick-${it.id}`}>
+                      <Check className="w-4 h-4" />
+                    </Button>
+                    <Button size="icon" variant={it.chef_status === "cancelled" ? "default" : "outline"} className={it.chef_status === "cancelled" ? "bg-red-500 hover:bg-red-600 text-white h-8 w-8" : "h-8 w-8"} title="Cancel" onClick={() => setChef(c.billId, it.id, it.chef_status === "cancelled" ? "pending" : "cancelled")} data-testid={`kds-cross-${it.id}`}>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <Button size="sm" variant={it.chef_status === "served" ? "default" : "outline"} className={it.chef_status === "served" ? "bg-sky-600 hover:bg-sky-700 text-white h-8 text-[11px]" : "h-8 text-[11px]"} title="Mark served" onClick={() => setChef(c.billId, it.id, "served")} data-testid={`kds-serve-${it.id}`}>
+                    <HandPlatter className="w-3.5 h-3.5 mr-1" /> Serve
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </article>
+      ))}
+    </div>
   );
 }
