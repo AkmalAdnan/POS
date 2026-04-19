@@ -33,6 +33,14 @@ Restaurant POS web app that takes orders, prints KOT + bills (CGST/SGST), sends 
 - Offline UX: new `useOnlineStatus` hook + sticky amber offline banner in AppShell; axios response interceptor converts SW's 202 `{queued:true}` into a typed rejection (`err.offlineQueued`) so NewOrderDialog shows a "queued" toast instead of crashing.
 - Testing: iteration_3.json passed 10/10 backend + frontend smoke (Dine-In/Takeaway + PWA verified).
 
+### Iteration 5 — Backend refactor (Feb 2026)
+- `server.py` (1009 lines) → 43-line entrypoint. Modular layout:
+  - `core/` — `config.py` (env + constants), `db.py` (Motor client), `security.py` (auth deps, JWT, hashing), `utils.py` (iso/ip/haversine).
+  - `models/schemas.py` — all Pydantic request models.
+  - `routes/` — `auth`, `settings`, `menu`, `tables`, `inventory`, `staff`, `cashier`, `bills`, `guard`, `expenses`, `analytics` (each ≤ 270 lines).
+  - `seed.py` — startup seeding (users, menu, tables, inventory).
+- All `/api/*` paths unchanged; 10/10 regression tests (`test_takeaway_dinein.py`) pass post-refactor.
+
 ## Backend endpoints (`/api`)
 - Auth: /auth/login, /register, /me, /logout
 - Menu: /menu CRUD (owner)
