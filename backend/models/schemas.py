@@ -49,8 +49,12 @@ class ChefStatusIn(BaseModel):
 
 
 class PaymentIn(BaseModel):
-    method: Literal["cash", "upi", "card"]
+    method: Literal["cash", "upi", "card", "split"]
     amount: float
+    # When method == "split", the breakdown:
+    cash_amount: Optional[float] = None
+    digital_amount: Optional[float] = None
+    digital_method: Optional[Literal["upi", "card"]] = None
 
 
 class TableIn(BaseModel):

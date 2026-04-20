@@ -249,13 +249,29 @@ async def record_payment(
     user: dict = Depends(require_roles("cashier", "owner", "captain")),
 ):
     bill = await fetch_bill(bid)
-    bill["payment"] = {
+    payment = {
         "status": "received", "method": body.method,
         "amount_received": round(float(body.amount), 2),
         "received_at": iso(),
         "received_by": user["id"], "received_by_name": user["name"],
         "received_by_role": user["role"],
     }
+    if body.method == "split":
+        if body.cash_amount is None or body.digital_amount is None or not body.digital_method:
+            raise HTTPException(400, "Split payment requires cash_amount, digital_amount, and digital_method")
+        cash = round(float(body.cash_amount), 2)
+        digital = round(float(body.digital_amount), 2)
+        if cash < 0 or digital < 0:
+            raise HTTPException(400, "Split amounts cannot be negative")
+        total = round(cash + digital, 2)
+        if abs(total - round(float(body.amount), 2)) > 0.01:
+            raise HTTPException(400, f"Split total ({total}) does not match amount ({body.amount})")
+        payment["split"] = {
+            "cash_amount": cash,
+            "digital_amount": digital,
+            "digital_method": body.digital_method,
+        }
+    bill["payment"] = payment
     bill["status"] = "closed"
     await save_bill(bill)
     return bill

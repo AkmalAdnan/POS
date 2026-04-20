@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast } from "sonner";
 import { CreditCard, Wallet, Smartphone, ReceiptText, Printer, Download, Lock, Plus } from "lucide-react";
 import NewOrderDialog from "@/components/NewOrderDialog";
+import PaymentMethodPicker from "@/components/PaymentMethodPicker";
 
 const METHODS = [
   { id: "cash", label: "Cash", icon: Wallet },
@@ -21,8 +22,7 @@ export default function CashierPayments() {
   const [totals, setTotals] = useState(null);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [active, setActive] = useState(null);
-  const [method, setMethod] = useState("cash");
-  const [amount, setAmount] = useState(0);
+  const [pay, setPay] = useState({ method: "cash", amount: 0 });
   const [newOrderOpen, setNewOrderOpen] = useState(false);
 
   const load = async () => {
@@ -33,11 +33,20 @@ export default function CashierPayments() {
   };
   useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [date]);
 
-  const startPay = (b) => { setActive(b); setMethod("cash"); setAmount(b.total); };
+  const startPay = (b) => { setActive(b); setPay({ method: "cash", amount: b.total }); };
   const confirmPay = async () => {
     try {
-      await api.post(`/bills/${active.id}/payment`, { method, amount: Number(amount) });
-      toast.success(`Payment received · ${method.toUpperCase()} · Bill #${active.bill_number}`);
+      const body = { method: pay.method, amount: Number(pay.amount) };
+      if (pay.method === "split") {
+        body.cash_amount = Number(pay.cash_amount);
+        body.digital_amount = Number(pay.digital_amount);
+        body.digital_method = pay.digital_method;
+      }
+      await api.post(`/bills/${active.id}/payment`, body);
+      const label = pay.method === "split"
+        ? `Split · ₹${pay.cash_amount} cash + ₹${pay.digital_amount} ${pay.digital_method?.toUpperCase()}`
+        : pay.method.toUpperCase();
+      toast.success(`Payment received · ${label} · Bill #${active.bill_number}`);
       setActive(null); load();
     } catch (e) { toast.error(e.response?.data?.detail || "Payment failed"); }
   };
@@ -132,20 +141,22 @@ export default function CashierPayments() {
           <DialogHeader><DialogTitle className="font-heading">Collect payment · Bill #{active?.bill_number}</DialogTitle></DialogHeader>
           {active && (
             <div>
-              <div className="text-sm text-brand-900/70">Table {active.table_name} · {active.customer_name || "Walk-in"} {active.customer_mobile && `· ${active.customer_mobile}`}</div>
+              <div className="text-sm text-brand-900/70">{active.order_type === "takeaway" ? "🥡 Take-away" : `Table ${active.table_name}`} · {active.customer_name || "Walk-in"} {active.customer_mobile && `· ${active.customer_mobile}`}</div>
               <div className="font-heading text-4xl text-brand-500 mt-2">{money(active.total)}</div>
-              <div className="grid grid-cols-3 gap-2 mt-5">
-                {METHODS.map((m) => (
-                  <button key={m.id} onClick={() => setMethod(m.id)} className={`rounded-xl border p-3 text-center transition-all ${method === m.id ? "border-brand-500 bg-brand-50 text-brand-900" : "border-earth-border hover:border-brand-300"}`} data-testid={`cashier-method-${m.id}`}>
-                    <m.icon className="w-5 h-5 mx-auto" />
-                    <div className="mt-1 text-xs font-medium uppercase tracking-widest">{m.label}</div>
-                  </button>
-                ))}
+              <div className="mt-5">
+                <PaymentMethodPicker
+                  total={active.total}
+                  value={pay}
+                  onChange={setPay}
+                  testPrefix="cashier"
+                />
               </div>
-              <div className="mt-4">
-                <label className="text-xs text-brand-900/60">Amount received</label>
-                <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1 h-11" data-testid="cashier-amount-input" />
-              </div>
+              {pay.method !== "split" && (
+                <div className="mt-4">
+                  <label className="text-xs text-brand-900/60">Amount received</label>
+                  <Input type="number" value={pay.amount} onChange={(e) => setPay({ ...pay, amount: e.target.value })} className="mt-1 h-11" data-testid="cashier-amount-input" />
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>

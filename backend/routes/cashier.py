@@ -22,8 +22,15 @@ async def _totals(target: str) -> dict:
     cancelled = [b for b in bills if b["status"] == "cancelled"]
     pay_split = {"cash": 0.0, "upi": 0.0, "card": 0.0}
     for b in paid:
-        m = b.get("payment", {}).get("method")
-        if m in pay_split:
+        p = b.get("payment", {}) or {}
+        m = p.get("method")
+        if m == "split":
+            sp = p.get("split", {}) or {}
+            pay_split["cash"] = round(pay_split["cash"] + float(sp.get("cash_amount", 0)), 2)
+            dm = sp.get("digital_method")
+            if dm in pay_split:
+                pay_split[dm] = round(pay_split[dm] + float(sp.get("digital_amount", 0)), 2)
+        elif m in pay_split:
             pay_split[m] = round(pay_split[m] + b["total"], 2)
     return {
         "date": target,

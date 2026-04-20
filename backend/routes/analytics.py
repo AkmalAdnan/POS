@@ -29,8 +29,15 @@ async def analytics_summary(
     category_sales: dict = {}
     payment_split = {"cash": 0.0, "upi": 0.0, "card": 0.0}
     for b in paid:
-        m = b.get("payment", {}).get("method")
-        if m in payment_split:
+        p = b.get("payment", {}) or {}
+        m = p.get("method")
+        if m == "split":
+            sp = p.get("split", {}) or {}
+            payment_split["cash"] = round(payment_split["cash"] + float(sp.get("cash_amount", 0)), 2)
+            dm = sp.get("digital_method")
+            if dm in payment_split:
+                payment_split[dm] = round(payment_split[dm] + float(sp.get("digital_amount", 0)), 2)
+        elif m in payment_split:
             payment_split[m] = round(payment_split[m] + b["total"], 2)
         for it in b["items"]:
             if it.get("chef_status") == "cancelled": continue
@@ -68,7 +75,7 @@ async def analytics_summary(
 @router.get("/analytics/export")
 async def export_csv(
     date: Optional[str] = None,
-    user: dict = Depends(require_roles("owner")),
+    user: dict = Depends(require_roles("owner", "cashier")),
 ):
     target = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     start, end = f"{target}T00:00:00", f"{target}T23:59:59.999999+00:00"
@@ -79,16 +86,21 @@ async def export_csv(
     w = csv.writer(buf)
     w.writerow([
         "Bill#", "Created At", "Captain", "Table", "Customer", "Mobile", "Status",
-        "Payment", "Method", "Collected By", "Collected By Role", "Collected At",
+        "Payment", "Method", "Cash Part", "Digital Part", "Digital Method",
+        "Collected By", "Collected By Role", "Collected At",
         "Items", "Subtotal", "CGST", "SGST", "Total",
     ])
     for b in bills:
         items_str = "; ".join([f"{i['quantity']}x {i['name']}" for i in b["items"] if i.get("chef_status") != "cancelled"])
         p = b.get("payment", {}) or {}
+        sp = p.get("split", {}) or {}
         w.writerow([
             b["bill_number"], b["created_at"], b.get("captain_name", ""),
             b.get("table_name", ""), b.get("customer_name", ""), b.get("customer_mobile", ""),
             b["status"], p.get("status", "pending"), p.get("method") or "",
+            sp.get("cash_amount", "") if p.get("method") == "split" else "",
+            sp.get("digital_amount", "") if p.get("method") == "split" else "",
+            sp.get("digital_method", "") if p.get("method") == "split" else "",
             p.get("received_by_name") or "", p.get("received_by_role") or "",
             p.get("received_at") or "",
             items_str, b["subtotal"], b["cgst"], b["sgst"], b["total"],

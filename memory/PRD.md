@@ -47,6 +47,13 @@ Restaurant POS web app that takes orders, prints KOT + bills (CGST/SGST), sends 
 - **Chef KDS**: new top-level **"🥡 Take-away"** tab alongside Live KDS and Orders. Reusable `KDSCardGrid` component renders all takeaway KOT batches with the same ready/cancel/serve controls as Live KDS.
 - **Captain Bill dialog labels**: preview + payment dialogs show "🥡 Take-away" instead of "Table TAKEAWAY" when the bill is a parcel.
 
+### Iteration 7 — Split payments + CSV export fix (Feb 2026)
+- **Split payment**: `PaymentIn` extended with `method="split"` + `cash_amount`, `digital_amount`, `digital_method: "upi"|"card"`. Backend validates `cash + digital == amount`. Cashier totals and analytics aggregation correctly bucket split: cash portion → cash, digital → chosen upi/card.
+- Shared `PaymentMethodPicker` component (4 tiles: Cash · UPI · Card · **Split**) used by both Captain `Bill.jsx` and Cashier `Payments.jsx`. Split panel shows "Amount paid via Cash" input (user-editable) + "Amount paid via UPI / Card" with UPI/Card toggle (digital auto-computed as `total - cash`).
+- Analytics CSV enriched with `Cash Part`, `Digital Part`, `Digital Method` columns.
+- **Close-day CSV export bug fixed**: `GET /api/analytics/export` previously `require_roles("owner")` — cashier received 403, so the Close-day flow's CSV download produced error HTML. Now accepts `owner` + `cashier`. Verified HTTP 200 with 1.3 KB CSV payload.
+- **Note on auto-close at date rollover**: kept manual via the Close-day button. Full automatic rollover needs a server scheduler (e.g. APScheduler) — out of scope for this iteration; can be added when we wire email reports.
+
 ## Backend endpoints (`/api`)
 - Auth: /auth/login, /register, /me, /logout
 - Menu: /menu CRUD (owner)

@@ -8,7 +8,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Minus, Trash2, Printer, Search, Send, RefreshCw, Pencil, ReceiptText, Wallet, Smartphone, CreditCard, Check, X } from "lucide-react";
+import { ArrowLeft, Plus, Minus, Trash2, Printer, Search, Send, RefreshCw, Pencil, ReceiptText, Wallet, Check, X } from "lucide-react";
+import PaymentMethodPicker from "@/components/PaymentMethodPicker";
 
 const STATUS_COLOR = {
   pending: "bg-amber-100 text-amber-800 border-amber-200",
@@ -16,12 +17,6 @@ const STATUS_COLOR = {
   served: "bg-sky-100 text-sky-800 border-sky-200",
   cancelled: "bg-gray-100 text-gray-600 border-gray-200",
 };
-
-const PAY_METHODS = [
-  { id: "cash", label: "Cash", icon: Wallet },
-  { id: "upi", label: "UPI", icon: Smartphone },
-  { id: "card", label: "Card", icon: CreditCard },
-];
 
 export default function CaptainBill() {
   const { id } = useParams();
@@ -35,8 +30,7 @@ export default function CaptainBill() {
   const [itemNotes, setItemNotes] = useState({});
   const [editing, setEditing] = useState(null); // {item, newMenuItemId, qty, notes}
   const [payOpen, setPayOpen] = useState(false);
-  const [payMethod, setPayMethod] = useState("cash");
-  const [payAmount, setPayAmount] = useState(0);
+  const [pay, setPay] = useState({ method: "cash", amount: 0 });
 
   const load = async () => {
     const [b, m] = await Promise.all([api.get(`/bills/${id}`), api.get("/menu")]);
@@ -113,9 +107,18 @@ export default function CaptainBill() {
 
   const collectPayment = async () => {
     try {
-      const { data } = await api.post(`/bills/${id}/payment`, { method: payMethod, amount: Number(payAmount) });
+      const body = { method: pay.method, amount: Number(pay.amount) };
+      if (pay.method === "split") {
+        body.cash_amount = Number(pay.cash_amount);
+        body.digital_amount = Number(pay.digital_amount);
+        body.digital_method = pay.digital_method;
+      }
+      const { data } = await api.post(`/bills/${id}/payment`, body);
       setBill(data); setPayOpen(false);
-      toast.success(`Payment received · ${payMethod.toUpperCase()}`);
+      const label = pay.method === "split"
+        ? `Split · ₹${pay.cash_amount} cash + ₹${pay.digital_amount} ${pay.digital_method?.toUpperCase()}`
+        : pay.method.toUpperCase();
+      toast.success(`Payment received · ${label}`);
     } catch (e) { toast.error(e.response?.data?.detail || "Payment failed"); }
   };
 
@@ -243,7 +246,7 @@ export default function CaptainBill() {
               ) : (
                 <Button
                   className="mt-2 w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white"
-                  onClick={() => { setPayMethod("cash"); setPayAmount(bill.total); setPayOpen(true); }}
+                  onClick={() => { setPay({ method: "cash", amount: bill.total }); setPayOpen(true); }}
                   disabled={bill.total <= 0}
                   data-testid="bill-collect-payment-btn"
                 >
@@ -381,18 +384,20 @@ export default function CaptainBill() {
           <div>
             <div className="text-sm text-brand-900/70">{bill.order_type === "takeaway" ? "🥡 Take-away" : `Table ${bill.table_name}`} · {bill.customer_name || "Walk-in"}{bill.customer_mobile ? ` · ${bill.customer_mobile}` : ""}</div>
             <div className="font-heading text-4xl text-brand-500 mt-2">{money(bill.total)}</div>
-            <div className="grid grid-cols-3 gap-2 mt-5">
-              {PAY_METHODS.map((m) => (
-                <button key={m.id} onClick={() => setPayMethod(m.id)} className={`rounded-xl border p-3 text-center transition-all ${payMethod === m.id ? "border-brand-500 bg-brand-50 text-brand-900" : "border-earth-border hover:border-brand-300"}`} data-testid={`bill-pay-method-${m.id}`}>
-                  <m.icon className="w-5 h-5 mx-auto" />
-                  <div className="mt-1 text-xs font-medium uppercase tracking-widest">{m.label}</div>
-                </button>
-              ))}
+            <div className="mt-5">
+              <PaymentMethodPicker
+                total={bill.total}
+                value={pay}
+                onChange={setPay}
+                testPrefix="bill-pay"
+              />
             </div>
-            <div className="mt-4">
-              <label className="text-xs text-brand-900/60">Amount received</label>
-              <Input type="number" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="mt-1 h-11" data-testid="bill-pay-amount" />
-            </div>
+            {pay.method !== "split" && (
+              <div className="mt-4">
+                <label className="text-xs text-brand-900/60">Amount received</label>
+                <Input type="number" value={pay.amount} onChange={(e) => setPay({ ...pay, amount: e.target.value })} className="mt-1 h-11" data-testid="bill-pay-amount" />
+              </div>
+            )}
             <p className="text-[11px] text-brand-900/60 mt-3">
               Marking as received will close this bill. It will move to the cashier's <b>Completed</b> tab instantly.
             </p>
